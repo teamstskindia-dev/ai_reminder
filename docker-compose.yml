@@ -1,0 +1,128 @@
+# Remi backend — every container belongs to the `remi` project and runs the SAME image, remi-backend:latest.
+# Only the `migrate` service has a `build:` section, so `docker compose build` produces exactly one image;
+# api / worker / bot reuse it (pull_policy: never) and start after migrate has applied migrations.
+#
+# Hosted Supabase (default):      cp backend/.env.example backend/.env   # Supabase DATABASE_URL / DIRECT_URL
+#                                 docker compose up -d --build
+# Local Postgres (pgvector):      set DATABASE_URL=DIRECT_URL=postgresql://postgres:postgres@postgres:5432/remi
+#                                 docker compose --profile local-db up -d --build
+#   (Supabase Storage is not available in local-db mode: uploads are disabled with a logged warning.)
+# Host ports (override with env): Postgres ${POSTGRES_PORT:-5432}, Redis ${REDIS_PORT:-6379}, API ${API_PORT:-4000}.
+
+name: remi
+
+x-backend: &backend
+  image: remi-backend:latest
+  pull_policy: never
+  env_file:
+    - path: backend/.env
+      required: true
+  environment:
+    REDIS_URL: redis://redis:6379
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  restart: unless-stopped
+
+x-after-migrate: &after-migrate
+  redis:
+    condition: service_healthy
+  migrate:
+    condition: service_completed_successfully
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    profiles: ["local-db"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: remi
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d remi"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Owns the image build. Applies prisma/migrations (DIRECT_URL, falls back to DATABASE_URL), seeds an empty
+  # database (SEED_ON_MIGRATE=true), then exits 0.
+  migrate:
+    <<: *backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    pull_policy: build
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  api:
+    <<: *backend
+    command: ["api"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: "4000"
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on: *after-migrate
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 30s
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    depends_on: *after-migrate
+    healthcheck:
+      test: ["CMD-SHELL", "grep -qs 'dist/worker.js' /proc/[0-9]*/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # in-flight jobs get up to 60s to finish on SIGTERM
+    stop_grace_period: 70s
+
+  bot:
+    <<: *backend
+    command: ["bot"]
+    shm_size: 1gb
+    depends_on: *after-migrate
+    healthcheck:
+      test: ["CMD-SHELL", "grep -qs 'dist/bot.js' /proc/[0-9]*/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # the bot leaves calls cleanly, saves captions and enqueues AI on SIGTERM (≤45s)
+    stop_grace_period: 60s
+
+volumes:
+  postgres-data:
+  redis-data:

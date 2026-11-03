@@ -1,0 +1,582 @@
+// Remi data model. Mirrors prisma/migrations/20261103000000_init/migration.sql exactly
+// (snake_case tables/columns via @@map/@map, camelCase fields in TypeScript).
+//
+// Things Prisma cannot express live only in the SQL migrations: CHECK constraints (status
+// columns are plain String here, with string-literal unions in the domain layer), RLS, the
+// updated_at triggers, expression/partial/HNSW indexes and the match_meeting_chunks function.
+// `updatedAt` fields use @default(now()) because a database trigger maintains them.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "cjs"
+  runtime                = "nodejs"
+  // Explicit so generation does not depend on tsconfig discovery (e.g. in the Docker deps stage).
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+  previewFeatures        = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgcrypto, pg_trgm, vector(schema: "extensions")]
+}
+
+// -----------------------------------------------------------------------------
+// Plans
+// -----------------------------------------------------------------------------
+model Plan {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug         String   @unique
+  name         String
+  description  String?
+  priceMonthly Decimal  @default(0) @map("price_monthly") @db.Decimal(10, 2)
+  priceYearly  Decimal  @default(0) @map("price_yearly") @db.Decimal(10, 2)
+  currency     String   @default("USD")
+  features     Json     @default("[]")
+  limits       Json     @default("{}")
+  ctaLabel     String?  @map("cta_label")
+  isDefault    Boolean  @default(false) @map("is_default")
+  isPopular    Boolean  @default(false) @map("is_popular")
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  users User[]
+
+  @@map("plans")
+}
+
+// -----------------------------------------------------------------------------
+// Users
+// -----------------------------------------------------------------------------
+model User {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email       String
+  name        String?
+  avatarUrl   String?   @map("avatar_url")
+  googleSub   String?   @unique @map("google_sub")
+  timezone    String    @default("UTC")
+  locale      String    @default("en")
+  status      String    @default("active")
+  planId      String?   @map("plan_id") @db.Uuid
+  onboardedAt DateTime? @map("onboarded_at") @db.Timestamptz(6)
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  plan              Plan?              @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  settings          UserSettings?
+  googleAccount     GoogleAccount?
+  meetings          Meeting[]
+  meetingReports    MeetingReport[]
+  meetingChunks     MeetingChunk[]
+  actionItems       ActionItem[]
+  reminders         Reminder[]
+  notifications     Notification[]
+  devices           Device[]
+  assistantThreads  AssistantThread[]
+  assistantMessages AssistantMessage[]
+
+  @@index([createdAt(sort: Desc)], map: "users_created_at_idx")
+  @@map("users")
+}
+
+model UserSettings {
+  userId                 String   @id @map("user_id") @db.Uuid
+  autoJoin               String   @default("all") @map("auto_join")
+  botName                String?  @map("bot_name")
+  meetingReminderMinutes Int      @default(10) @map("meeting_reminder_minutes")
+  dailyDigest            Boolean  @default(true) @map("daily_digest")
+  digestHour             Int      @default(8) @map("digest_hour")
+  emailNotifications     Boolean  @default(true) @map("email_notifications")
+  pushNotifications      Boolean  @default(true) @map("push_notifications")
+  updatedAt              DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("user_settings")
+}
+
+model GoogleAccount {
+  userId            String    @id @map("user_id") @db.Uuid
+  googleEmail       String    @map("google_email")
+  accessTokenEnc    String?   @map("access_token_enc")
+  refreshTokenEnc   String?   @map("refresh_token_enc")
+  scope             String?
+  tokenExpiresAt    DateTime? @map("token_expires_at") @db.Timestamptz(6)
+  calendarConnected Boolean   @default(false) @map("calendar_connected")
+  calendarSyncToken String?   @map("calendar_sync_token")
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  syncError         String?   @map("sync_error")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("google_accounts")
+}
+
+// -----------------------------------------------------------------------------
+// Admins
+// -----------------------------------------------------------------------------
+model Admin {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String
+  name         String
+  passwordHash String    @map("password_hash")
+  role         String    @default("editor")
+  status       String    @default("active")
+  avatarUrl    String?   @map("avatar_url")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  settings              AppSetting[]
+  cmsPages              CmsPage[]
+  mediaAssets           MediaAsset[]
+  aiPrompts             AiPrompt[]
+  notificationTemplates NotificationTemplate[]
+  broadcasts            Broadcast[]
+  auditLogs             AuditLog[]
+
+  @@map("admins")
+}
+
+// -----------------------------------------------------------------------------
+// Auth sessions (hashed refresh tokens, rotation families) for users + admins
+// -----------------------------------------------------------------------------
+model AuthSession {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subjectType String    @map("subject_type")
+  subjectId   String    @map("subject_id") @db.Uuid
+  familyId    String    @map("family_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  userAgent   String?   @map("user_agent")
+  ip          String?
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  replacedBy  String?   @map("replaced_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  replacement  AuthSession?  @relation("SessionRotation", fields: [replacedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  replacedFrom AuthSession[] @relation("SessionRotation")
+
+  @@index([subjectType, subjectId], map: "auth_sessions_subject_idx")
+  @@index([familyId], map: "auth_sessions_family_idx")
+  @@map("auth_sessions")
+}
+
+// -----------------------------------------------------------------------------
+// Meetings
+// -----------------------------------------------------------------------------
+model Meeting {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  source          String    @default("calendar")
+  calendarEventId String?   @map("calendar_event_id")
+  icalUid         String?   @map("ical_uid")
+  title           String    @default("Untitled meeting")
+  description     String?
+  platform        String    @default("google_meet")
+  meetingUrl      String?   @map("meeting_url")
+  startAt         DateTime  @map("start_at") @db.Timestamptz(6)
+  endAt           DateTime? @map("end_at") @db.Timestamptz(6)
+  timezone        String?
+  organizerEmail  String?   @map("organizer_email")
+  isOrganizer     Boolean   @default(false) @map("is_organizer")
+  attendees       Json      @default("[]")
+  status          String    @default("scheduled")
+  autoJoin        Boolean   @default(true) @map("auto_join")
+  botJobId        String?   @map("bot_job_id")
+  botJoinedAt     DateTime? @map("bot_joined_at") @db.Timestamptz(6)
+  botLeftAt       DateTime? @map("bot_left_at") @db.Timestamptz(6)
+  failureReason   String?   @map("failure_reason")
+  durationSeconds Int?      @map("duration_seconds")
+  recordingPath   String?   @map("recording_path")
+  language        String?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  participants MeetingParticipant[]
+  segments     TranscriptSegment[]
+  report       MeetingReport?
+  chunks       MeetingChunk[]
+  actionItems  ActionItem[]
+  reminders    Reminder[]
+
+  @@unique([userId, calendarEventId])
+  @@index([userId, startAt(sort: Desc)], map: "meetings_user_start_idx")
+  @@index([status], map: "meetings_status_idx")
+  @@index([title(ops: raw("gin_trgm_ops"))], map: "meetings_title_trgm_idx", type: Gin)
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meetingId       String   @map("meeting_id") @db.Uuid
+  name            String
+  email           String?
+  talkTimeSeconds Int      @default(0) @map("talk_time_seconds")
+  wordCount       Int      @default(0) @map("word_count")
+  talkRatio       Decimal  @default(0) @map("talk_ratio") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([meetingId, name])
+  @@map("meeting_participants")
+}
+
+model TranscriptSegment {
+  id        BigInt   @id @default(autoincrement())
+  meetingId String   @map("meeting_id") @db.Uuid
+  seq       Int
+  speaker   String   @default("Unknown")
+  text      String
+  startMs   Int      @default(0) @map("start_ms")
+  endMs     Int?     @map("end_ms")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([meetingId, seq])
+  @@map("transcript_segments")
+}
+
+model MeetingReport {
+  meetingId       String   @id @map("meeting_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  summary         String
+  keyPoints       Json     @default("[]") @map("key_points")
+  chapters        Json     @default("[]")
+  keyQuestions    Json     @default("[]") @map("key_questions")
+  decisions       Json     @default("[]")
+  topics          String[] @default([])
+  sentimentScore  Decimal? @map("sentiment_score") @db.Decimal(5, 2)
+  engagementScore Decimal? @map("engagement_score") @db.Decimal(5, 2)
+  meetingScore    Decimal? @map("meeting_score") @db.Decimal(5, 2)
+  sentimentLabel  String?  @map("sentiment_label")
+  model           String?
+  promptVersion   Int?     @map("prompt_version")
+  raw             Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "meeting_reports_user_idx")
+  @@map("meeting_reports")
+}
+
+model MeetingChunk {
+  id         BigInt                      @id @default(autoincrement())
+  meetingId  String                      @map("meeting_id") @db.Uuid
+  userId     String                      @map("user_id") @db.Uuid
+  chunkIndex Int                         @map("chunk_index")
+  content    String
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([meetingId, chunkIndex])
+  @@index([userId], map: "meeting_chunks_user_idx")
+  @@map("meeting_chunks")
+}
+
+// -----------------------------------------------------------------------------
+// Action items, reminders, notifications, devices
+// -----------------------------------------------------------------------------
+model ActionItem {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  meetingId     String?   @map("meeting_id") @db.Uuid
+  title         String
+  description   String?
+  assigneeName  String?   @map("assignee_name")
+  assigneeEmail String?   @map("assignee_email")
+  isMine        Boolean   @default(true) @map("is_mine")
+  dueAt         DateTime? @map("due_at") @db.Timestamptz(6)
+  priority      String    @default("medium")
+  status        String    @default("open")
+  source        String    @default("manual")
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  meeting   Meeting?   @relation(fields: [meetingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reminders Reminder[]
+
+  @@index([userId, status, dueAt], map: "action_items_user_status_idx")
+  @@index([meetingId], map: "action_items_meeting_idx")
+  @@map("action_items")
+}
+
+model Reminder {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  meetingId     String?   @map("meeting_id") @db.Uuid
+  actionItemId  String?   @map("action_item_id") @db.Uuid
+  type          String    @default("custom")
+  title         String
+  body          String?
+  remindAt      DateTime  @map("remind_at") @db.Timestamptz(6)
+  channels      String[]  @default(["push", "in_app"])
+  status        String    @default("pending")
+  source        String    @default("manual")
+  jobId         String?   @map("job_id")
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(6)
+  failureReason String?   @map("failure_reason")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  meeting    Meeting?    @relation(fields: [meetingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  actionItem ActionItem? @relation(fields: [actionItemId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([userId, remindAt], map: "reminders_user_time_idx")
+  @@map("reminders")
+}
+
+model Notification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String?
+  data      Json      @default("{}")
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "notifications_user_idx")
+  @@map("notifications")
+}
+
+model Device {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  expoPushToken String   @unique @map("expo_push_token")
+  platform      String
+  deviceName    String?  @map("device_name")
+  appVersion    String?  @map("app_version")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "devices_user_idx")
+  @@map("devices")
+}
+
+// -----------------------------------------------------------------------------
+// Ask AI
+// -----------------------------------------------------------------------------
+model AssistantThread {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  messages AssistantMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)], map: "assistant_threads_user_idx")
+  @@map("assistant_threads")
+}
+
+model AssistantMessage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  threadId  String   @map("thread_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String
+  content   String
+  sources   Json     @default("[]")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  thread AssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([threadId, createdAt], map: "assistant_messages_thread_idx")
+  @@map("assistant_messages")
+}
+
+// -----------------------------------------------------------------------------
+// CMS / dynamic configuration
+// -----------------------------------------------------------------------------
+model AppSetting {
+  key         String   @id
+  value       Json
+  isPublic    Boolean  @default(false) @map("is_public")
+  description String?
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  updater Admin? @relation(fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("app_settings")
+}
+
+model ContentSection {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  page      String
+  type      String
+  name      String
+  content   Json     @default("{}")
+  platform  String   @default("all")
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([page, sortOrder], map: "content_sections_page_idx")
+  @@map("content_sections")
+}
+
+model CmsPage {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String    @unique
+  title       String
+  content     String    @default("")
+  seo         Json      @default("{}")
+  status      String    @default("draft")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  updatedBy   String?   @map("updated_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  updater Admin? @relation(fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("cms_pages")
+}
+
+model NavigationItem {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  location        String
+  label           String
+  href            String
+  icon            String?
+  groupLabel      String?  @map("group_label")
+  requiredFeature String?  @map("required_feature")
+  isExternal      Boolean  @default(false) @map("is_external")
+  sortOrder       Int      @default(0) @map("sort_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([location, sortOrder], map: "navigation_items_location_idx")
+  @@map("navigation_items")
+}
+
+model Banner {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform  String    @default("all")
+  placement String    @default("dashboard")
+  variant   String    @default("info")
+  title     String
+  body      String?
+  imageUrl  String?   @map("image_url")
+  ctaLabel  String?   @map("cta_label")
+  ctaUrl    String?   @map("cta_url")
+  startsAt  DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz(6)
+  sortOrder Int       @default(0) @map("sort_order")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("banners")
+}
+
+model MediaAsset {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  publicId     String   @unique @map("public_id")
+  url          String
+  resourceType String   @default("image") @map("resource_type")
+  format       String?
+  width        Int?
+  height       Int?
+  bytes        Int?
+  folder       String?
+  alt          String?
+  uploadedBy   String?  @map("uploaded_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  uploader Admin? @relation(fields: [uploadedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([createdAt(sort: Desc)], map: "media_assets_created_idx")
+  @@map("media_assets")
+}
+
+model AiPrompt {
+  key         String   @id
+  name        String
+  description String?
+  content     String
+  version     Int      @default(1)
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  updater Admin? @relation(fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("ai_prompts")
+}
+
+model NotificationTemplate {
+  key           String   @id
+  name          String
+  titleTemplate String   @map("title_template")
+  bodyTemplate  String   @map("body_template")
+  emailSubject  String?  @map("email_subject")
+  emailBody     String?  @map("email_body")
+  channels      String[] @default(["push", "in_app"])
+  isActive      Boolean  @default(true) @map("is_active")
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  updater Admin? @relation(fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("notification_templates")
+}
+
+model Broadcast {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title     String
+  body      String
+  data      Json     @default("{}")
+  audience  Json     @default("{\"type\":\"all\"}")
+  channels  String[] @default(["push", "in_app"])
+  sentCount Int      @default(0) @map("sent_count")
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  creator Admin? @relation(fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("broadcasts")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  adminId   String?  @map("admin_id") @db.Uuid
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  changes   Json?
+  ip        String?
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  admin Admin? @relation(fields: [adminId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([createdAt(sort: Desc)], map: "audit_logs_created_idx")
+  @@index([entity, entityId], map: "audit_logs_entity_idx")
+  @@map("audit_logs")
+}

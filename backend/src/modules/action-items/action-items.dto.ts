@@ -1,0 +1,74 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { PaginationQueryDto } from '../../common/pagination/pagination';
+import { IsOptionalNonNull, IsOptionalNullable, ToBoolean } from '../../common/validation/validators';
+
+export class ListActionItemsQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ enum: ['open', 'done', 'dismissed', 'all'], default: 'open' })
+  @IsOptional()
+  @IsIn(['open', 'done', 'dismissed', 'all'])
+  status: 'open' | 'done' | 'dismissed' | 'all' = 'open';
+
+  @IsOptional()
+  @IsUUID()
+  meetingId?: string;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @ToBoolean()
+  @IsBoolean()
+  mine?: boolean;
+}
+
+export class CreateActionItemDto {
+  @IsString()
+  @Length(1, 300)
+  title: string;
+
+  @IsOptionalNullable()
+  @IsString()
+  @MaxLength(5000)
+  description?: string | null;
+
+  @IsOptionalNullable()
+  @IsISO8601()
+  dueAt?: string | null;
+
+  @ApiPropertyOptional({ enum: ['low', 'medium', 'high'] })
+  @IsOptionalNonNull()
+  @IsIn(['low', 'medium', 'high'])
+  priority?: 'low' | 'medium' | 'high';
+
+  @IsOptionalNullable()
+  @IsUUID()
+  meetingId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Creates an action_item_due reminder at dueAt' })
+  @IsOptionalNonNull()
+  @IsBoolean()
+  remind?: boolean;
+}
+
+export class UpdateActionItemDto {
+  @IsOptionalNonNull()
+  @IsString()
+  @Length(1, 300)
+  title?: string;
+
+  @IsOptionalNullable()
+  @IsString()
+  @MaxLength(5000)
+  description?: string | null;
+
+  @IsOptionalNullable()
+  @IsISO8601()
+  dueAt?: string | null;
+
+  @IsOptionalNonNull()
+  @IsIn(['low', 'medium', 'high'])
+  priority?: 'low' | 'medium' | 'high';
+
+  @IsOptionalNonNull()
+  @IsIn(['open', 'done', 'dismissed'])
+  status?: 'open' | 'done' | 'dismissed';
+}
