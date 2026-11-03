@@ -36,21 +36,26 @@ npm install                 # postinstall runs `prisma generate`
 cp .env.example .env        # then edit (see below)
 ```
 
-### Database (Supabase + Prisma)
+### Database: local in development, Supabase in production
 
-**Hosted Supabase (recommended).** In *Project settings → Database → Connection string*:
+**Development always uses a local Postgres** (pgvector). From the repo root, `docker compose up -d postgres redis`
+publishes it on `localhost:5433` (5433 avoids clashing with a Homebrew Postgres on 5432); `backend/.env.example`
+already points `DATABASE_URL`/`DIRECT_URL` there. Inside the compose stack the containers use `postgres:5432`.
+Uploads (Supabase Storage) are disabled locally; everything else works.
 
-- `DATABASE_URL` = the **Transaction pooler** string (port **6543**) with `?sslmode=require&uselibpqcompat=true`.
-  The app talks to Postgres through `@prisma/adapter-pg`, which never uses named prepared statements, so it is safe
-  behind Supavisor/PgBouncer transaction mode without any `pgbouncer=true` flag.
-- `DIRECT_URL` = the **Session pooler / direct** string (port **5432**) with `?sslmode=require`. Only the Prisma CLI
-  uses it (migrations, `db execute`).
-- `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` = *Project settings → API*. Used **only** for Storage; the API creates
-  the private `recordings` bucket on boot if it is missing. Without them, uploads are disabled (everything else works).
+**Supabase is production-only, and this is enforced.** With `NODE_ENV=development` or `test`, both the API boot
+(`src/config/database-target.ts`) and the Prisma CLI (`prisma.config.ts`) refuse a `*.supabase.co` / `*.supabase.com`
+host, so a local migrate or seed can never touch production. The deliberate override is `ALLOW_REMOTE_DB_IN_DEV=true`.
 
-**Local Postgres.** `docker compose --profile local-db up -d postgres redis` (from the repo root) starts pgvector
-Postgres and Redis; point both URLs at `postgresql://postgres:postgres@localhost:5432/remi` for host runs
-(`postgres:5432` inside compose). Storage/uploads are disabled without Supabase.
+**Production** (`backend/.env.production.example` → `/opt/remi/.env.production` on the VPS):
+
+- `DATABASE_URL` = the Supabase **transaction pooler** (port **6543**) with `?sslmode=require&uselibpqcompat=true`.
+  `@prisma/adapter-pg` never uses named prepared statements, so no `pgbouncer=true` flag is needed.
+- `DIRECT_URL` = the **session pooler** (port **5432**, IPv4). Only the Prisma CLI uses it, in the `migrate` container.
+- `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (Project settings → API keys): Storage only. The API creates the
+  private `recordings` bucket on boot.
+
+See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the release pipeline.
 
 Apply the schema and the default content:
 
@@ -124,20 +129,15 @@ container belongs to the `remi` compose project. The image's entrypoint picks th
 # from the repo root
 cp backend/.env.example backend/.env
 
-# A) hosted Supabase (default): DATABASE_URL / DIRECT_URL point to Supabase
-docker compose up -d --build                      # redis, migrate (one-off), api :4000, worker, bot
-
-# B) local Postgres (pgvector) in compose: in backend/.env set
-#    DATABASE_URL=postgresql://postgres:postgres@postgres:5432/remi
-#    DIRECT_URL=postgresql://postgres:postgres@postgres:5432/remi
-docker compose --profile local-db up -d --build   # + postgres
+docker compose up -d --build                      # postgres :5433, redis, migrate (one-off), api :4000, worker, bot
 ```
 
 - Only the `migrate` service has a `build:` section (`image: remi-backend:latest`); `api`, `worker` and `bot` use
   the same image (`pull_policy: never`) and start after `migrate` exits 0 and Redis is healthy.
-- Host ports: API `${API_PORT:-4000}`, Redis `${REDIS_PORT:-6379}`, Postgres `${POSTGRES_PORT:-5432}` (local-db), so
-  you can also run `npm run start:*` on the host against the compose Redis/Postgres (use `localhost` URLs there).
-- In local-db mode there is no Supabase Storage: uploads are disabled (the API logs a warning on boot).
+- Host ports: API `${API_PORT:-4000}`, Redis `${REDIS_PORT:-6379}`, Postgres `${POSTGRES_PORT:-5433}`, so you can
+  also run `npm run start:*` on the host against the compose Redis/Postgres (the `localhost` URLs in `.env`).
+- Local development has no Supabase Storage: uploads are disabled (the API logs a warning on boot).
+- Production uses `deploy/docker-compose.prod.yml` (shipped inside the image) on the VPS; see docs/DEPLOYMENT.md.
 - Image layout: `deps` (npm ci + prisma generate) → `build` (nest build) → `prod-deps` (npm prune + trimming of
   source maps, typings, TypeScript and non-Postgres Prisma engines) → `runtime`: node:24-bookworm-slim, tini,
   Debian `chromium` + Xvfb + fonts, prod `node_modules` (incl. the Prisma CLI), `dist`, `prisma/`; non-root `node`.

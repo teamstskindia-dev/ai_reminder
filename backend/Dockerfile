@@ -56,6 +56,9 @@ COPY --chown=node:node prisma ./prisma
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/remi-entrypoint
+# Reported by GET /api/v1/health as `version`; CI waits for it to confirm Watchtower rolled out this build.
+ARG GIT_SHA=dev
+ENV REMI_VERSION=${GIT_SHA}
 USER node
 EXPOSE 4000
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/remi-entrypoint"]

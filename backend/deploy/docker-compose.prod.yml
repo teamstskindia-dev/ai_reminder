@@ -1,0 +1,134 @@
+# Remi — PRODUCTION backend on the shared Hostinger VPS (Compose project `remi-prod`, directory /opt/remi).
+# Self-contained: it never touches the server's other projects (tsk_group, leogix-prod) or their containers.
+#   - private GHCR image tagged :production, updated by a project-scoped Watchtower (scope `remi` only);
+#   - the API listens on 127.0.0.1:4000 only. There is no public entry yet: ports 80/443 belong to another project, and
+#     a public HTTPS address will be added once Remi has its own domain (see docs/DEPLOYMENT.md §2).
+#
+#   /opt/remi/docker-compose.yml   this file (copy it there when it changes)
+#   /opt/remi/.env.production      application secrets (Supabase, JWT, Google, Gemini, …), chmod 600, never in git
+#
+# Release: CI pushes ghcr.io/teamstskindia-dev/remi-backend:production → Watchtower pulls it within ~2 minutes and
+# restarts api/worker/bot one at a time; the api applies pending Prisma migrations on start (MIGRATE_ON_START).
+# Database: Supabase (external). Migrations are forward-only: keep each release compatible with the previous schema.
+
+name: remi-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend: &backend
+  image: ${REMI_IMAGE:-ghcr.io/teamstskindia-dev/remi-backend:production}
+  env_file:
+    - path: .env.production
+      required: true
+  environment: &backend-env
+    NODE_ENV: production
+    REDIS_URL: redis://redis:6379
+  labels:
+    com.centurylinklabs.watchtower.scope: remi
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+  restart: unless-stopped
+  networks:
+    - internal
+
+services:
+  redis:
+    image: redis:7-alpine
+    # BullMQ requires noeviction; AOF keeps queued jobs and delayed reminders across restarts.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - internal
+
+  api:
+    <<: *backend
+    command: ["api"]
+    environment:
+      <<: *backend-env
+      PORT: "4000"
+      MIGRATE_ON_START: "true"
+    # Loopback only: reachable on the server (or through an SSH tunnel), not from the internet.
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # first boot of a release applies migrations before listening
+      start_period: 120s
+    stop_grace_period: 30s
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "grep -qs 'dist/worker.js' /proc/[0-9]*/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 70s
+
+  bot:
+    <<: *backend
+    command: ["bot"]
+    shm_size: 1gb
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "grep -qs 'dist/bot.js' /proc/[0-9]*/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 60s
+
+  # Scoped like the server's other Watchtowers: it only touches containers labelled scope=remi.
+  watchtower:
+    image: containrrr/watchtower
+    command: ["--scope", "remi", "--interval", "120", "--cleanup", "--rolling-restart"]
+    environment:
+      WATCHTOWER_SCOPE: remi
+      # containrrr/watchtower defaults to Docker API 1.25, which Docker 29.x refuses; pin a supported version.
+      DOCKER_API_VERSION: "1.44"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The server's registry credentials (ghcr.io) — the image is private.
+      - /root/.docker/config.json:/config.json:ro
+    labels:
+      com.centurylinklabs.watchtower.scope: remi
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  redis-data:
+
+networks:
+  internal: {}

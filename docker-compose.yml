@@ -1,13 +1,15 @@
-# Remi backend — every container belongs to the `remi` project and runs the SAME image, remi-backend:latest.
-# Only the `migrate` service has a `build:` section, so `docker compose build` produces exactly one image;
+# Remi — LOCAL DEVELOPMENT stack. Every container belongs to the `remi` project and runs the SAME image,
+# remi-backend:latest. Only `migrate` has a `build:` section, so `docker compose build` produces exactly one image;
 # api / worker / bot reuse it (pull_policy: never) and start after migrate has applied migrations.
 #
-# Hosted Supabase (default):      cp backend/.env.example backend/.env   # Supabase DATABASE_URL / DIRECT_URL
-#                                 docker compose up -d --build
-# Local Postgres (pgvector):      set DATABASE_URL=DIRECT_URL=postgresql://postgres:postgres@postgres:5432/remi
-#                                 docker compose --profile local-db up -d --build
-#   (Supabase Storage is not available in local-db mode: uploads are disabled with a logged warning.)
-# Host ports (override with env): Postgres ${POSTGRES_PORT:-5432}, Redis ${REDIS_PORT:-6379}, API ${API_PORT:-4000}.
+# Development always uses the local Postgres below — never Supabase (the API refuses a Supabase host unless
+# NODE_ENV=production). Production runs deploy/vps/docker-compose.prod.yml on the VPS against Supabase.
+#
+#   cp backend/.env.example backend/.env
+#   docker compose up -d --build                 # postgres, redis, migrate, api, worker, bot
+#   docker compose up -d postgres redis          # only the databases, for `npm run start:dev` on the host
+#
+# Host ports (override with env): Postgres ${POSTGRES_PORT:-5433}, Redis ${REDIS_PORT:-6379}, API ${API_PORT:-4000}.
 
 name: remi
 
@@ -18,6 +20,9 @@ x-backend: &backend
     - path: backend/.env
       required: true
   environment:
+    # containers always talk to the compose services, whatever backend/.env says for host runs
+    DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
+    DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
     REDIS_URL: redis://redis:6379
   extra_hosts:
     - host.docker.internal:host-gateway
@@ -32,13 +37,12 @@ x-after-migrate: &after-migrate
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    profiles: ["local-db"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: remi
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -75,12 +79,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-        required: false
 
   api:
     <<: *backend
     command: ["api"]
     environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
       REDIS_URL: redis://redis:6379
       PORT: "4000"
     ports:

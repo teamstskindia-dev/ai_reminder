@@ -1,0 +1,427 @@
+# Remi CI/CD — one workflow for the monorepo. Full guide: docs/DEPLOYMENT.md
+#
+# Pull requests and pushes: verify only the apps whose folders changed (backend / web / admin / mobile).
+# Push to main (a merged PR) deploys only what changed:
+#   backend/**  → build ONE image ghcr.io/<owner>/remi-backend, tags :<sha> and :production → on the Hostinger VPS
+#                 Watchtower (scope remi) pulls :production, the api migrates Supabase on start; CI then waits until
+#                 the public /api/v1/health reports this commit
+#   web/**      → Vercel production (website project)
+#   admin/**    → Vercel production (admin project)
+# Several apps changed → each one deploys. The website and admin wait for the backend rollout and are held back if
+# any backend stage failed (they may depend on the new API). mobile/** and docs/** never deploy.
+# Actions → CI/CD → Run workflow (on main) with deploy = all | backend | web | admin re-deploys on demand.
+#
+# The backend needs no deploy secrets (the server pulls). Vercel deploys switch on per app with repository variables;
+# until then those jobs are skipped and the run summary says so: WEB_DEPLOY_ENABLED, ADMIN_DEPLOY_ENABLED = true
+# Repository secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_WEB, VERCEL_PROJECT_ID_ADMIN
+# Repository variable: API_PUBLIC_URL (public API origin, once one exists) — the rollout check polls its /health.
+# Production database credentials never reach GitHub: they live only in /opt/remi/.env.production on the VPS.
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main, developer]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: What to deploy (only when run on main)
+        type: choice
+        options: [changed, all, backend, web, admin, none]
+        default: changed
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  VERCEL_CLI: vercel@65
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      verify_backend: ${{ steps.plan.outputs.verify_backend }}
+      verify_web: ${{ steps.plan.outputs.verify_web }}
+      verify_admin: ${{ steps.plan.outputs.verify_admin }}
+      verify_mobile: ${{ steps.plan.outputs.verify_mobile }}
+      deploy_backend: ${{ steps.plan.outputs.deploy_backend }}
+      deploy_web: ${{ steps.plan.outputs.deploy_web }}
+      deploy_admin: ${{ steps.plan.outputs.deploy_admin }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            web:
+              - 'web/**'
+            admin:
+              - 'admin/**'
+            mobile:
+              - 'mobile/**'
+            workflow:
+              - '.github/workflows/**'
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REQUESTED: ${{ inputs.deploy || 'changed' }}
+          BACKEND_CHANGED: ${{ steps.filter.outputs.backend }}
+          WEB_CHANGED: ${{ steps.filter.outputs.web }}
+          ADMIN_CHANGED: ${{ steps.filter.outputs.admin }}
+          MOBILE_CHANGED: ${{ steps.filter.outputs.mobile }}
+          WORKFLOW_CHANGED: ${{ steps.filter.outputs.workflow }}
+          # backend releases are pulled by Watchtower: always on
+          BACKEND_ENABLED: "true"
+          WEB_ENABLED: ${{ vars.WEB_DEPLOY_ENABLED }}
+          ADMIN_ENABLED: ${{ vars.ADMIN_DEPLOY_ENABLED }}
+          MOBILE_ENABLED: ""
+        run: |
+          set -euo pipefail
+          release=false
+          if [[ $REF == refs/heads/main && ( $EVENT == push || $EVENT == workflow_dispatch ) ]]; then release=true; fi
+          {
+            echo "### Plan (${EVENT} on ${REF#refs/heads/})"
+            echo "| app | changed | verify | deploy |"
+            echo "|-----|---------|--------|--------|"
+          } >>"$GITHUB_STEP_SUMMARY"
+          for app in backend web admin mobile; do
+            key=${app^^}
+            changed_var=${key}_CHANGED enabled_var=${key}_ENABLED
+            changed=${!changed_var:-false} enabled=${!enabled_var:-}
+            deploy=false
+            if [[ $release == true && $app != mobile ]]; then
+              case $REQUESTED in
+                all | "$app") deploy=true ;;
+                changed) deploy=$changed ;;
+              esac
+            fi
+            verify=false
+            if [[ $changed == true || $WORKFLOW_CHANGED == true || $deploy == true || $REQUESTED == all ]]; then verify=true; fi
+            note=""
+            if [[ $deploy == true && $enabled != true ]]; then note=" — skipped: set repository variable ${key}_DEPLOY_ENABLED=true"; fi
+            echo "verify_${app}=${verify}" >>"$GITHUB_OUTPUT"
+            echo "deploy_${app}=${deploy}" >>"$GITHUB_OUTPUT"
+            echo "| ${app} | ${changed} | ${verify} | ${deploy}${note} |" >>"$GITHUB_STEP_SUMMARY"
+          done
+
+  # ------------------------------------------------------------------ verify
+  verify-backend:
+    name: Backend · typecheck, lint, test, build, migrations
+    needs: changes
+    if: needs.changes.outputs.verify_backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: remi_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d remi_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/remi_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/remi_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint:check
+      - run: npm test -- --ci
+      - run: npm run build
+      - name: Migrations apply to a fresh pgvector database
+        run: npx prisma migrate deploy
+      - name: Seed applies on top of the migrations
+        run: npm run db:seed
+
+  verify-web:
+    name: Website · typecheck, lint, build
+    needs: changes
+    if: needs.changes.outputs.verify_web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # The build falls back to bundled config when the API is unreachable, so CI needs no backend.
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      API_URL_INTERNAL: http://localhost:4000
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      REVALIDATE_SECRET: ci-only-revalidate-secret-not-used-anywhere
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  verify-admin:
+    name: Admin · typecheck, lint, build
+    needs: changes
+    if: needs.changes.outputs.verify_admin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: admin
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_WEB_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  verify-mobile:
+    name: Mobile · typecheck, lint
+    needs: changes
+    if: needs.changes.outputs.verify_mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  # PRs and non-main branches: prove the production image still builds (main builds and pushes it below).
+  backend-image-check:
+    name: Backend · Docker image builds
+    needs: changes
+    if: needs.changes.outputs.verify_backend == 'true' && needs.changes.outputs.deploy_backend != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=remi-backend
+          cache-to: type=gha,scope=remi-backend,mode=max
+
+  # ------------------------------------------------------------------ release (main only)
+  backend-image:
+    name: Backend · build & push image
+    needs: [changes, verify-backend]
+    if: needs.changes.outputs.deploy_backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/remi-backend" >>"$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64
+          push: true
+          # :production is what Watchtower on the VPS follows — pushing it IS the backend release.
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+            ${{ steps.name.outputs.image }}:production
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=remi-backend
+          cache-to: type=gha,scope=remi-backend,mode=max
+      - id: ref
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "ref=${IMAGE}@${DIGEST}" >>"$GITHUB_OUTPUT"
+          echo "Image: \`${IMAGE}@${DIGEST}\`" >>"$GITHUB_STEP_SUMMARY"
+
+  deploy-backend:
+    name: Backend · confirm Watchtower rollout
+    needs: [changes, backend-image]
+    if: needs.changes.outputs.deploy_backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.API_PUBLIC_URL }}
+    concurrency:
+      group: deploy-backend-production
+      cancel-in-progress: false
+    steps:
+      - name: Wait until the VPS serves this commit
+        env:
+          API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
+          EXPECTED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$API_PUBLIC_URL" ]; then
+            echo "::warning::Repository variable API_PUBLIC_URL is not set; skipping the rollout check."
+            exit 0
+          fi
+          # Watchtower polls every 2 minutes; the api then migrates and boots. Allow ~12 minutes in total.
+          for attempt in $(seq 1 72); do
+            body=$(curl -fsS -m 10 "$API_PUBLIC_URL/api/v1/health" 2>/dev/null || true)
+            version=$(printf '%s' "$body" | jq -r '.version // empty' 2>/dev/null || true)
+            if [ "$version" = "$EXPECTED" ]; then
+              curl -fsS -m 10 -o /dev/null "$API_PUBLIC_URL/api/v1/health/ready"
+              echo "Live: $API_PUBLIC_URL runs $EXPECTED (ready)" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "attempt $attempt: serving '${version:-unreachable}', waiting for $EXPECTED"
+            sleep 10
+          done
+          echo "::error::The VPS did not start $EXPECTED within 12 minutes. On the server: cd /opt/remi && docker compose logs --tail 100 watchtower api"
+          exit 1
+
+  deploy-web:
+    name: Website · deploy to Vercel
+    needs: [changes, verify-web, verify-backend, backend-image, deploy-backend]
+    if: >-
+      always() &&
+      needs.changes.outputs.deploy_web == 'true' &&
+      vars.WEB_DEPLOY_ENABLED == 'true' &&
+      needs.verify-web.result == 'success' &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.verify-backend.result) &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.backend-image.result) &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.deploy-backend.result)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    concurrency:
+      group: deploy-web-production
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install --global "$VERCEL_CLI"
+      - name: Build and deploy (production)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+        run: |
+          set -euo pipefail
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            [ -n "${!name}" ] || { echo "::error::$name is not set (VERCEL_PROJECT_ID comes from VERCEL_PROJECT_ID_WEB)"; exit 1; }
+          done
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >>"$GITHUB_OUTPUT"
+          echo "Website deployed: $url" >>"$GITHUB_STEP_SUMMARY"
+
+  deploy-admin:
+    name: Admin · deploy to Vercel
+    needs: [changes, verify-admin, verify-backend, backend-image, deploy-backend]
+    if: >-
+      always() &&
+      needs.changes.outputs.deploy_admin == 'true' &&
+      vars.ADMIN_DEPLOY_ENABLED == 'true' &&
+      needs.verify-admin.result == 'success' &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.verify-backend.result) &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.backend-image.result) &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.deploy-backend.result)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    concurrency:
+      group: deploy-admin-production
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install --global "$VERCEL_CLI"
+      - name: Build and deploy (production)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_ADMIN }}
+        run: |
+          set -euo pipefail
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            [ -n "${!name}" ] || { echo "::error::$name is not set (VERCEL_PROJECT_ID comes from VERCEL_PROJECT_ID_ADMIN)"; exit 1; }
+          done
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >>"$GITHUB_OUTPUT"
+          echo "Admin deployed: $url" >>"$GITHUB_STEP_SUMMARY"

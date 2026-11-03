@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { remoteDatabaseViolation } from './database-target';
+
 const bool = (def: boolean) =>
   z
     .union([z.boolean(), z.string()])
@@ -79,6 +81,8 @@ export const envSchema = z
       .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must be a postgresql:// connection string'),
     DIRECT_URL: optionalString,
     DATABASE_POOL_MAX: int(10, 1, 100),
+    /** Escape hatch for the "Supabase is production-only" rule (see database-target.ts). */
+    ALLOW_REMOTE_DB_IN_DEV: bool(false),
 
     // Supabase is only used for Storage (recordings bucket); both are optional.
     SUPABASE_URL: optionalString.pipe(z.url().optional()),
@@ -144,6 +148,14 @@ export const envSchema = z
         path: ['ADMIN_SEED_PASSWORD'],
         message: 'ADMIN_SEED_PASSWORD must be at least 12 characters',
       });
+    }
+    const remoteDb = remoteDatabaseViolation(
+      env.NODE_ENV,
+      { DATABASE_URL: env.DATABASE_URL, DIRECT_URL: env.DIRECT_URL },
+      env.ALLOW_REMOTE_DB_IN_DEV,
+    );
+    if (remoteDb) {
+      ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: remoteDb });
     }
     if (env.CORS_ORIGINS.some((o) => o.includes('*'))) {
       ctx.addIssue({

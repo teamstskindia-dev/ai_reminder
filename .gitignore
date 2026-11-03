@@ -12,10 +12,11 @@ web-build/
 android/app/build/
 *.tsbuildinfo
 
-# env
+# env (real values never committed; *.example templates are)
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # logs
 *.log
@@ -34,3 +35,6 @@ backend/supabase/.branches/
 
 # bot artifacts
 backend/tmp/
+
+# vercel cli (vercel pull/build)
+.vercel/

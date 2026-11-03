@@ -419,33 +419,40 @@ Invalidation is centralised in `ContentCacheService.invalidate(scope)`, which ev
 
 ## 11. Deployment
 
-```
-docker compose up -d --build                      # hosted Supabase: redis, migrate (one-off), api, worker, bot
-docker compose --profile local-db up -d --build   # + local Postgres (pgvector) instead of Supabase
-```
+Full runbook: [DEPLOYMENT.md](DEPLOYMENT.md).
 
-Everything runs from **one image, `remi-backend:latest`**, built once from `backend/Dockerfile`. It contains the compiled
-app, production dependencies, the Prisma CLI and migrations, and Chromium + Xvfb for the bot. Each service starts the
-same image with a different command, and all containers belong to the single `remi` compose project.
+| Environment | Database | Backend | Website / admin |
+|-------------|----------|---------|-----------------|
+| Development | **local** Postgres + pgvector (`docker compose`, `localhost:5433`) | `npm run start:dev` or `docker compose up` | `npm run dev` |
+| Production  | **Supabase** (pooler: 6543 app, 5432 migrations) | Hostinger VPS (shared), compose project `remi-prod`, Watchtower | Vercel (two projects) |
 
-| Service  | Image                | Command                     | Ports | Depends on        |
-|----------|----------------------|-----------------------------|-------|-------------------|
-| postgres | pgvector/pgvector:pg16 (profile `local-db`) | —    | 5432  | —                 |
-| redis    | redis:7-alpine       | —                           | 6379  | —                 |
-| migrate  | `remi-backend`       | `prisma migrate deploy` (exits) | — | postgres (local-db) |
-| api      | `remi-backend`       | `node dist/main.js`         | 4000  | redis, migrate    |
-| worker   | `remi-backend`       | `node dist/worker.js`       | —     | redis, migrate    |
-| bot      | `remi-backend`       | `xvfb-run node dist/bot.js` | —     | redis, migrate    |
+Supabase is production-only: the API and the Prisma CLI refuse a Supabase host unless `NODE_ENV=production`.
 
-One image means one build, one tag to push and roll back, and no version skew between api, worker and bot. The cost
-is that api and worker containers also carry the Chromium layers (disk only; they never start a browser). If image
-size matters more later, the Dockerfile can expose a slimmer `runtime` target without the browser for api/worker.
+Everything in the backend runs from **one image, `remi-backend`**, built once from `backend/Dockerfile`. It contains the
+compiled app, production dependencies, the Prisma CLI and migrations, and Chromium + Xvfb for the bot. Each service
+starts the same image with a different command.
 
-Supabase is external by default (hosted project); the `local-db` profile runs Postgres + pgvector in the same stack
-for offline development (Supabase Storage uploads are disabled in that mode). `migrate` applies pending Prisma
-migrations before the app containers start. Website and admin deploy as standard Next.js apps (Vercel / Node). The
-mobile app builds for both stores with EAS (`eas build --platform ios|android`) or locally with `expo run:ios` /
-`expo run:android`; push uses APNs (iOS) and FCM v1 (Android) through Expo Push.
+| Service  | Image                  | Command                         | Dev ports | Prod exposure        |
+|----------|------------------------|---------------------------------|-----------|----------------------|
+| postgres | pgvector/pgvector:pg16 | — (dev only)                    | 5433      | — (Supabase)         |
+| redis    | redis:7-alpine         | —                               | 6379      | internal only        |
+| migrate  | `remi-backend`         | `prisma migrate deploy` (exits) | —         | — (api migrates on start) |
+| api      | `remi-backend`         | `node dist/main.js`             | 4000      | 127.0.0.1:4000 (private until a domain) |
+| worker   | `remi-backend`         | `node dist/worker.js`           | —         | —                    |
+| bot      | `remi-backend`         | `xvfb-run node dist/bot.js`     | —         | —                    |
+| watchtower | containrrr/watchtower | `--scope remi --interval 120` (prod only) | — | —                |
 
-Production topology: `app.example.com` (website), `admin.example.com` (admin), `api.example.com` (api), with
-`COOKIE_DOMAIN=.example.com`.
+One image means one build, one digest to deploy and roll back, and no version skew between api, worker and bot. The
+cost is that api and worker containers also carry the Chromium layers (disk only; they never start a browser).
+
+**CI/CD** (`.github/workflows/ci-cd.yml`) verifies only the apps that changed on every PR. A merge to `main` deploys only
+what changed:
+- backend → GHCR `remi-backend:production`, which Watchtower on the VPS pulls (the api migrates Supabase on start);
+  CI waits until `/api/v1/health` reports the new commit;
+- web / admin → Vercel production.
+
+Frontends wait for the backend rollout when both changed. The mobile app is released separately with EAS
+(`eas build --platform ios|android`); push uses APNs (iOS) and FCM v1 (Android) through Expo Push.
+
+Production topology: `<domain>` (website), `admin.<domain>` (admin), `api.<domain>` (API on the VPS; private on
+`127.0.0.1:4000` until the domain exists), with `COOKIE_DOMAIN=.<domain>`.

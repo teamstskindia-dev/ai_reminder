@@ -8,6 +8,9 @@ import { MaintenanceExempt, SkipEnvelope } from '../../common/decorators/metadat
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { REDIS } from '../../infra/redis/redis.constants';
 
+/** Git SHA baked into the image (Docker build-arg GIT_SHA); CI compares it to confirm a Watchtower rollout. */
+const VERSION = process.env.REMI_VERSION || 'dev';
+
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([p.catch(() => fallback), new Promise<T>((r) => setTimeout(() => r(fallback), ms).unref())]);
 }
@@ -27,7 +30,7 @@ export class HealthController {
 
   @Get()
   live() {
-    return { status: 'ok', uptime: Math.round(process.uptime()) };
+    return { status: 'ok', uptime: Math.round(process.uptime()), version: VERSION };
   }
 
   @Get('ready')

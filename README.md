@@ -17,12 +17,13 @@ Design docs: [docs/HLD.md](docs/HLD.md) (architecture, flows, security, deployme
 
 ## Quick start
 
-1. **Backend** — see [backend/README.md](backend/README.md) for Supabase, Google OAuth, Gemini and Cloudinary setup.
+1. **Backend** — see [backend/README.md](backend/README.md) for Google OAuth, Gemini and Cloudinary setup.
+   Development always uses a **local** Postgres; Supabase is production-only, and the API refuses it in dev.
    ```bash
-   cp backend/.env.example backend/.env        # fill in DATABASE_URL / DIRECT_URL, Google + Gemini keys
-   docker compose up -d --build                # redis, migrate, api, worker, bot — one image: remi-backend
-   # no Supabase? run Postgres + pgvector in the same stack:
-   docker compose --profile local-db up -d --build
+   cp backend/.env.example backend/.env        # local DB URLs are the defaults; add Google + Gemini keys
+   docker compose up -d --build                # postgres, redis, migrate, api, worker, bot — one image: remi-backend
+   # or run only the databases and start the backend on the host:
+   docker compose up -d postgres redis && cd backend && npm run prisma:migrate && npm run db:seed && npm run start:dev
    ```
    On first boot the API creates the super admin from `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD` in `backend/.env`.
    For a fully offline demo set `AI_MOCK=true` and `BOT_MODE=simulate`.
@@ -41,6 +42,18 @@ Design docs: [docs/HLD.md](docs/HLD.md) (architecture, flows, security, deployme
    ```bash
    cd mobile && cp .env.example .env && npm install && npx expo start      # i = iOS simulator, a = Android emulator
    ```
+
+## Production and CI/CD
+
+Merging to `main` deploys only what changed:
+
+- `backend/` → Hostinger VPS: CI pushes `remi-backend:production` to GHCR, Watchtower on the server pulls it, and the
+  API migrates Supabase on start (running privately on the VPS until Remi has a public domain);
+- `web/` → Vercel;
+- `admin/` → Vercel.
+
+Pull requests run typecheck, lint, tests and builds for the changed apps. Setup, secrets and operations are in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## What needs real credentials
 
