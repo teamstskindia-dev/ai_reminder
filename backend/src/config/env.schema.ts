@@ -131,6 +131,11 @@ export const envSchema = z
 
     BOT_MODE: z.enum(['puppeteer', 'simulate']).default('simulate'),
     BOT_CONCURRENCY: int(1, 1, 10),
+    /**
+     * Persistent Chromium profile signed in to the bot's own Google account (see `bot-login` in the entrypoint).
+     * Google Meet refuses signed-out automated guests, so production sets this. Unset = fresh temporary profile per job.
+     */
+    BOT_PROFILE_DIR: optionalString,
     CHROME_PATH: z.string().default('/usr/bin/chromium'),
     CALENDAR_SYNC_INTERVAL_MINUTES: int(10, 1, 1440),
   })
@@ -156,6 +161,13 @@ export const envSchema = z
     );
     if (remoteDb) {
       ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: remoteDb });
+    }
+    if (env.BOT_PROFILE_DIR && env.BOT_CONCURRENCY > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BOT_CONCURRENCY'],
+        message: 'BOT_CONCURRENCY must be 1 with BOT_PROFILE_DIR (one signed-in profile cannot run two browsers)',
+      });
     }
     if (env.CORS_ORIGINS.some((o) => o.includes('*'))) {
       ctx.addIssue({

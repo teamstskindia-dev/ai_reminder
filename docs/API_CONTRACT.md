@@ -705,7 +705,7 @@ interface SettingValue {
   app: AppMeta;
   seo: Seo;
   ai: {
-    model: string;                 // e.g. "gemini-2.5-flash"
+    model: string;                 // e.g. "gemini-3.5-flash" (1.x/2.x models are rejected as deprecated)
     embeddingModel: string;        // e.g. "gemini-embedding-001"
     temperature: number;           // 0..2
     maxOutputTokens: number;

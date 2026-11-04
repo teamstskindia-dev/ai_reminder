@@ -129,6 +129,21 @@ curl -s http://127.0.0.1:4000/api/v1/health        # {"status":"ok","version":"<
   Add new variables **before** merging code that needs them.
 - **Change the stack definition:** copy `backend/deploy/docker-compose.prod.yml` to `/opt/remi/docker-compose.yml`, then
   run `docker compose up -d`. Watchtower updates images, not the compose file.
+- **Meeting bot sign-in (one time).** Google Meet refuses signed-out automated guests ("You can't join this video
+  call"), so the bot joins signed in to its **own** Google account, for example `remi.notetaker@gmail.com`. Name the
+  account "Remi Notetaker"; meeting hosts see that name and admit it. The session lives in the `bot-profile` volume,
+  which only `bot` and `bot-login` mount.
+  ```bash
+  # on the VPS
+  cd /opt/remi && docker compose stop bot
+  BOT_LOGIN_VNC_PASSWORD='<temporary password>' docker compose run --rm --service-ports bot-login
+  # on your Mac, in another terminal: SSH tunnel to the VNC port (published on the server's loopback only)
+  ssh -N -L 5900:127.0.0.1:5900 root@194.238.16.75
+  # open vnc://localhost:5900 (Finder → Go → Connect to Server), enter the temporary password,
+  # sign in to the bot account in the Chromium window, then press Ctrl+C on the VPS
+  docker compose start bot
+  ```
+  Repeat if Google signs the bot out (failure reason: "…not signed in to a Google account").
 - **First-time bootstrap** (already done on 194.238.16.75). Build or pull the image, then:
   ```bash
   install -d -m 0700 /opt/remi

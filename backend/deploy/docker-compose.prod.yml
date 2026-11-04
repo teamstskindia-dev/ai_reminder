@@ -99,6 +99,13 @@ services:
     <<: *backend
     command: ["bot"]
     shm_size: 1gb
+    environment:
+      <<: *backend-env
+      # Signed in to the bot's own Google account (Meet refuses signed-out automated guests). Set up once with the
+      # `bot-login` service below; concurrency must stay 1 with a shared profile.
+      BOT_PROFILE_DIR: /home/node/bot-profile
+    volumes:
+      - bot-profile:/home/node/bot-profile
     depends_on:
       api:
         condition: service_healthy
@@ -108,6 +115,31 @@ services:
       timeout: 5s
       retries: 3
     stop_grace_period: 60s
+
+  # One-off: sign the bot's Google account into its profile over VNC (never started by `up`). It gets no app secrets.
+  #   docker compose stop bot
+  #   BOT_LOGIN_VNC_PASSWORD='<temporary password>' docker compose run --rm --service-ports bot-login
+  #   (on your Mac: ssh -N -L 5900:127.0.0.1:5900 root@<vps>, then open vnc://localhost:5900 and sign in)
+  #   docker compose start bot
+  bot-login:
+    image: ${REMI_IMAGE:-ghcr.io/teamstskindia-dev/remi-backend:production}
+    pull_policy: never
+    profiles: ["tools"]
+    command: ["bot-login"]
+    environment:
+      BOT_PROFILE_DIR: /home/node/bot-profile
+      BOT_LOGIN_VNC_PASSWORD: ${BOT_LOGIN_VNC_PASSWORD:-}
+    volumes:
+      - bot-profile:/home/node/bot-profile
+    # VNC on the server's loopback only; reach it through an SSH tunnel.
+    ports:
+      - "127.0.0.1:5900:5900"
+    shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    networks:
+      - internal
 
   # Remi's own HTTPS origin on port 8444 (80/443 belong to another project on this server). Public URL:
   # https://api.leogix.io via Cloudflare (Origin Rule → 8444). Serves the Cloudflare Origin CA certificate in edge/certs
@@ -159,6 +191,7 @@ volumes:
   redis-data:
   edge-data:
   edge-config:
+  bot-profile:
 
 networks:
   internal: {}

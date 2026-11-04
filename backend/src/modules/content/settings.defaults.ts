@@ -55,7 +55,7 @@ export const SETTINGS_DEFAULTS: SettingValue = {
     keywords: ['ai meeting assistant', 'meeting notes', 'google meet notetaker', 'action items', 'reminders'],
   },
   ai: {
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.5-flash',
     embeddingModel: 'gemini-embedding-001',
     temperature: 0.3,
     maxOutputTokens: 8192,
@@ -86,7 +86,7 @@ export const SETTINGS_DEFAULTS: SettingValue = {
       inCallIndicator: "button[aria-label='Leave call']",
       waitingRoomText:
         "Asking to join|Please wait until a meeting host brings you into the call|You'll join the call when someone lets you in",
-      deniedText: "You can't join this call|Someone in the call denied your request|You've been removed",
+      deniedText: "You can't join this video call|You can't join this call|Someone in the call denied your request|You've been removed",
       endedText: "You left the meeting|The call has ended|Return to home screen|You've been removed from the meeting",
     },
   },

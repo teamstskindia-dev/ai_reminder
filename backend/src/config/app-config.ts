@@ -137,6 +137,7 @@ export class AppConfig {
       mode: this.env.BOT_MODE,
       concurrency: this.env.BOT_CONCURRENCY,
       chromePath: this.env.CHROME_PATH,
+      profileDir: this.env.BOT_PROFILE_DIR,
     };
   }
 

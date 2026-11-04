@@ -71,9 +71,16 @@ export const seoSchema = z
   })
   .strict();
 
+/** Gemini 1.x / 2.x generation models are deprecated: refuse them so a stale name cannot be configured again. */
+const DEPRECATED_GEMINI_MODEL = /^(models\/)?gemini-[12](\.|-|$)/i;
+
 export const aiSchema = z
   .object({
-    model: text(100).min(1),
+    model: text(100)
+      .min(1)
+      .refine((m) => !DEPRECATED_GEMINI_MODEL.test(m), {
+        message: 'Gemini 1.x/2.x models are deprecated; use gemini-3.5-flash or newer',
+      }),
     embeddingModel: text(100).min(1),
     temperature: z.number().min(0).max(2),
     maxOutputTokens: z.number().int().min(256).max(65536),

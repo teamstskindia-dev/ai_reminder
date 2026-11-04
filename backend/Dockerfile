@@ -56,7 +56,7 @@ RUN if [ -n "$DEBIAN_MIRROR" ]; then \
   && apt-get update \
   && apt-get install -y --no-install-recommends \
      tini openssl ca-certificates \
-     chromium xvfb xauth fonts-liberation \
+     chromium xvfb xauth fonts-liberation x11vnc \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc /usr/share/man \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
@@ -65,6 +65,9 @@ COPY --chown=node:node prisma ./prisma
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/remi-entrypoint
+# Mount point for the bot's persistent, signed-in Chromium profile (BOT_PROFILE_DIR); owned by `node` so a named
+# volume mounted here starts out writable.
+RUN install -d -o node -g node -m 0700 /home/node/bot-profile
 # Reported by GET /api/v1/health as `version`; CI waits for it to confirm Watchtower rolled out this build.
 ARG GIT_SHA=dev
 ENV REMI_VERSION=${GIT_SHA}
