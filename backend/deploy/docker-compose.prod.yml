@@ -1,8 +1,8 @@
 # Remi — PRODUCTION backend on the shared Hostinger VPS (Compose project `remi-prod`, directory /opt/remi).
 # Self-contained: it never touches the server's other projects (tsk_group, leogix-prod) or their containers.
 #   - private GHCR image tagged :production, updated by a project-scoped Watchtower (scope `remi` only);
-#   - public HTTPS is Remi's own `edge` Caddy on port 8444 (https://api.leogix.io:8444): ports 80/443 belong to another
-#     project, so the certificate is issued with DNS-01 through Hostinger's DNS API (acme/, certbot service);
+#   - public HTTPS is https://api.leogix.io through Cloudflare, which forwards to Remi's own `edge` Caddy on port 8444
+#     (ports 80/443 belong to another project); edge uses a Cloudflare Origin CA certificate (no renewals);
 #   - the API itself listens on 127.0.0.1:4000 only.
 #
 #   /opt/remi/docker-compose.yml   this file (copy it there when it changes)
@@ -109,8 +109,9 @@ services:
       retries: 3
     stop_grace_period: 60s
 
-  # Remi's own public HTTPS entry on port 8444 (80/443 belong to another project on this server). Serves the certbot
-  # certificate for API_DOMAIN (set in /opt/remi/.env) and forwards to the API. Enabled with COMPOSE_PROFILES=edge.
+  # Remi's own HTTPS origin on port 8444 (80/443 belong to another project on this server). Public URL:
+  # https://api.leogix.io via Cloudflare (Origin Rule → 8444). Serves the Cloudflare Origin CA certificate in edge/certs
+  # and accepts connections from Cloudflare only. Enabled with COMPOSE_PROFILES=edge (+ API_DOMAIN in /opt/remi/.env).
   edge:
     image: caddy:2-alpine
     profiles: ["edge"]
@@ -120,7 +121,7 @@ services:
       - "8444:8444"
     volumes:
       - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./acme/letsencrypt:/certs:ro
+      - ./edge/certs:/certs:ro
       - edge-data:/data
       - edge-config:/config
     labels:
@@ -132,21 +133,6 @@ services:
       - no-new-privileges:true
     logging: *logging
     restart: unless-stopped
-    networks:
-      - internal
-
-  # One-off certificate tool (never started by `up`): issues/renews the API_DOMAIN certificate with DNS-01 through
-  # Hostinger's DNS API. Only this container gets the Hostinger token (acme/hostinger.env). See acme/renew.sh.
-  certbot:
-    image: certbot/certbot:latest
-    profiles: ["tools"]
-    env_file:
-      - path: acme/hostinger.env
-        required: false
-    volumes:
-      - ./acme/letsencrypt:/etc/letsencrypt
-      - ./acme/hostinger_dns_hook.py:/acme/hostinger_dns_hook.py:ro
-    restart: "no"
     networks:
       - internal
 
