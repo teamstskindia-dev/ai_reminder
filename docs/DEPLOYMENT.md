@@ -40,12 +40,15 @@ The VPS also runs other projects (`tsk_group` in `/root/tsk_group`, `leogix-prod
 - **No public address yet.** Ports 80/443 belong to another project's proxy, and Remi does not share it. From your
   machine, reach the API through an SSH tunnel:
   `ssh -N -L 4000:127.0.0.1:4000 root@194.238.16.75`, then use `http://localhost:4000`.
-- **When Remi gets a domain**, choose one of these. Neither touches the other projects.
-  - A Remi-only Caddy on a free port with a DNS-01 certificate (e.g. `https://api.<domain>:8444`).
-  - A dedicated VPS where Remi owns 80/443.
-
-  Then set `API_PUBLIC_URL`, `GOOGLE_REDIRECT_URI` and `COOKIE_DOMAIN` in `/opt/remi/.env.production` (they currently
-  hold placeholders), and the GitHub variable `API_PUBLIC_URL`.
+- **Public HTTPS via Cloudflare Tunnel** (chosen; Remi-only, no ports). The `cloudflared` service in the compose file
+  (profile `tunnel`) opens an outbound tunnel to Cloudflare. To enable it:
+  1. Put the domain's DNS on Cloudflare.
+  2. In Zero Trust → Networks → Tunnels, create a tunnel (type *Cloudflared*) and copy its token.
+  3. Add a public hostname `api.<domain>`, service **HTTP**, URL `api:4000`.
+  4. In `/opt/remi/.env`, add `COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN=<token>` (chmod 600), then run
+     `docker compose up -d`.
+  5. Set `API_PUBLIC_URL` / `GOOGLE_REDIRECT_URI` in `/opt/remi/.env.production`, register the callback in Google, and
+     set the GitHub variable `API_PUBLIC_URL`.
 
 ## 3. Release pipeline (`.github/workflows/ci-cd.yml`)
 
@@ -96,7 +99,10 @@ origin, which the rollout check uses. Leave it unset while the API is private.
 2. Production env vars:
    - **Website:** `NEXT_PUBLIC_API_URL`, `API_URL_INTERNAL` (= the API URL), `NEXT_PUBLIC_SITE_URL`, and
      `REVALIDATE_SECRET` set to the same value as `WEB_REVALIDATE_SECRET` in `.env.production`.
-   - **Admin:** `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WEB_URL`.
+   - **Admin (same-origin mode, required on `*.vercel.app`):** `NEXT_PUBLIC_API_PROXY=true`,
+     `API_PROXY_TARGET=https://api.<domain>` and `NEXT_PUBLIC_WEB_URL`. The admin then calls `/api/v1` on its own domain
+     and Vercel forwards it to the API, so the login cookies belong to the admin's domain. Redeploy after changing
+     these: `NEXT_PUBLIC_*` values are baked in at build time.
 3. Secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`.
 4. Variables: `WEB_DEPLOY_ENABLED=true`, `ADMIN_DEPLOY_ENABLED=true`.
 5. Domains: put the website on `<domain>`, the admin on `admin.<domain>` and the API on `api.<domain>` (all under one

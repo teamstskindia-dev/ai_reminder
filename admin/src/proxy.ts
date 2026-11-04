@@ -22,7 +22,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except Next internals and static files.
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|txt|xml)$).*)',
+    // Everything except Next internals, static files and /api/v1 (same-origin mode forwards it to the backend,
+    // which authenticates every request itself; redirecting API calls to /login would break them).
+    '/((?!_next/static|_next/image|api/v1/|favicon.ico|robots.txt|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|txt|xml)$).*)',
   ],
 };

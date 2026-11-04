@@ -6,7 +6,15 @@ import type { ApiErrorBody, ApiSuccess, Paginated, PaginationMeta } from './type
 export { ApiError, getErrorMessage, isApiError };
 export type { ClientErrorCode };
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
+/**
+ * Same-origin mode (NEXT_PUBLIC_API_PROXY=true): the browser calls /api/v1 on the admin's own domain and the admin's
+ * server forwards it to API_PROXY_TARGET (rewrites in next.config.ts). The API's auth cookies then belong to the
+ * admin's domain, which is where the route guard (src/proxy.ts) looks for them. Required whenever the admin and the
+ * API don't share a parent domain, e.g. *.vercel.app.
+ */
+const SAME_ORIGIN = process.env.NEXT_PUBLIC_API_PROXY === 'true';
+
+export const API_URL = SAME_ORIGIN ? '' : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 export const API_BASE = `${API_URL}/api/v1`;
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -120,7 +128,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     throw new ApiError({
       status: 0,
       code: 'NETWORK_ERROR',
-      message: `Cannot reach the API at ${API_URL}. Check your connection or whether the backend is running.`,
+      message: `Cannot reach the API${API_URL ? ` at ${API_URL}` : ''}. Check your connection or whether the backend is running.`,
     });
   }
 }

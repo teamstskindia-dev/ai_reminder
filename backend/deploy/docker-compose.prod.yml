@@ -108,6 +108,27 @@ services:
       retries: 3
     stop_grace_period: 60s
 
+  # Public HTTPS without opening ports: an outbound Cloudflare Tunnel. The public hostname (e.g. api.<domain>) and its
+  # target (http://api:4000) are set on the tunnel in the Cloudflare dashboard. Off until enabled with
+  # COMPOSE_PROFILES=tunnel + TUNNEL_TOKEN in /opt/remi/.env; only this container receives the token.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    labels:
+      com.centurylinklabs.watchtower.scope: remi
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - internal
+
   # Scoped like the server's other Watchtowers: it only touches containers labelled scope=remi.
   watchtower:
     image: containrrr/watchtower

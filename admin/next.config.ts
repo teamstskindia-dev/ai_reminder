@@ -13,10 +13,32 @@ function apiOrigin(): string {
 }
 
 /**
+ * Same-origin mode: NEXT_PUBLIC_API_PROXY=true makes the browser call /api/v1 on this domain, and this server forwards
+ * it to API_PROXY_TARGET (server-only, e.g. https://api.example.com). Fails the build when misconfigured rather than
+ * shipping an admin that cannot reach its API.
+ */
+const sameOrigin = process.env.NEXT_PUBLIC_API_PROXY === 'true';
+
+function proxyTarget(): string | null {
+  if (!sameOrigin) return null;
+  const raw = process.env.API_PROXY_TARGET;
+  let url: URL;
+  try {
+    url = new URL(raw ?? '');
+  } catch {
+    throw new Error('NEXT_PUBLIC_API_PROXY=true requires API_PROXY_TARGET, the backend origin (e.g. https://api.example.com)');
+  }
+  if (!isDev && url.protocol !== 'https:') {
+    throw new Error('API_PROXY_TARGET must be an https:// origin in production builds');
+  }
+  return url.origin;
+}
+
+/**
  * HTTPS-only directives (HSTS, upgrade-insecure-requests) apply to production builds that talk to an https API.
  * A production build run locally against http://localhost keeps working (they would break plain-http requests).
  */
-const httpsDeployment = !isDev && apiOrigin().startsWith('https://');
+const httpsDeployment = !isDev && (sameOrigin || apiOrigin().startsWith('https://'));
 
 /**
  * Content-Security-Policy without nonces. Nonces would force every page to render dynamically (no static
@@ -31,7 +53,7 @@ function contentSecurityPolicy(): string {
     'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     'img-src': ["'self'", 'https:', 'data:', 'blob:', ...(isDev ? ['http:'] : [])],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
-    'connect-src': ["'self'", apiOrigin(), ...(isDev ? ['ws:', 'wss:'] : [])],
+    'connect-src': ["'self'", ...(sameOrigin ? [] : [apiOrigin()]), ...(isDev ? ['ws:', 'wss:'] : [])],
     'media-src': ["'self'"],
     'worker-src': ["'self'", 'blob:'],
     'manifest-src': ["'self'"],
@@ -80,6 +102,10 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
+  },
+  async rewrites() {
+    const target = proxyTarget();
+    return target ? [{ source: '/api/v1/:path*', destination: `${target}/api/v1/:path*` }] : [];
   },
 };
 
