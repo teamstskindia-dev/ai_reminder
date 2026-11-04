@@ -73,6 +73,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # optional faster Debian mirror for local builds (set DEBIAN_MIRROR in the root .env); empty = deb.debian.org
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
     pull_policy: build
     command: ["migrate"]
     restart: "no"

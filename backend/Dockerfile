@@ -4,12 +4,17 @@
 # Stages: deps (npm ci + prisma generate) → build (nest build) → prod-deps (npm prune) → runtime (final).
 
 ARG NODE_VERSION=24.13.0
+# Optional Debian mirror for slow networks, e.g. DEBIAN_MIRROR=http://mirror.nl.leaseweb.net/debian (empty = deb.debian.org).
+ARG DEBIAN_MIRROR=
 
 # ---------- deps: full install + Prisma client generation ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS deps
+ARG DEBIAN_MIRROR
 WORKDIR /app
 ENV CHECKPOINT_DISABLE=1 PRISMA_HIDE_UPDATE_MESSAGE=1 PUPPETEER_SKIP_DOWNLOAD=1
-RUN apt-get update \
+RUN if [ -n "$DEBIAN_MIRROR" ]; then \
+      sed -i "s|^URIs: http://deb.debian.org/debian\$|URIs: ${DEBIAN_MIRROR}|" /etc/apt/sources.list.d/debian.sources; fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json prisma.config.ts ./
@@ -37,6 +42,7 @@ RUN npm prune --omit=dev --no-audit --no-fund \
 
 # ---------- runtime: the single final image ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ARG DEBIAN_MIRROR
 ENV NODE_ENV=production \
     CHECKPOINT_DISABLE=1 \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
@@ -44,7 +50,9 @@ ENV NODE_ENV=production \
 WORKDIR /app
 # tini (PID 1), openssl/ca-certificates (TLS to Supabase), Debian's Chromium + Xvfb + fonts for the bot.
 # npm/yarn/corepack are not needed at runtime (the entrypoint calls node and the local Prisma CLI directly).
-RUN apt-get update \
+RUN if [ -n "$DEBIAN_MIRROR" ]; then \
+      sed -i "s|^URIs: http://deb.debian.org/debian\$|URIs: ${DEBIAN_MIRROR}|" /etc/apt/sources.list.d/debian.sources; fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends \
      tini openssl ca-certificates \
      chromium xvfb xauth fonts-liberation \
