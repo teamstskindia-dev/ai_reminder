@@ -6,7 +6,7 @@ import { launch, TargetType } from 'puppeteer-core';
 import type { Browser, HTTPRequest, Page, Target } from 'puppeteer-core';
 import { AppConfig } from '../../../config/app-config';
 import { causeChain } from '../../../common/errors/app.exception';
-import { isJoinableMeetUrl } from '../../../common/validation/safe-url';
+import { isJoinableMeetUrl, normalizeMeetUrl } from '../../../common/validation/safe-url';
 import type { BotSettings } from '../../content/settings.schemas';
 import type { BotSession, SessionOutcome } from './bot-session';
 import { BotStep, BotStepError, failureReasonFrom, runStep } from './bot-step-error';
@@ -92,7 +92,7 @@ export class MeetRunner {
           }),
         );
         res.browser = browser;
-        return this.openMeeting(browser, ctx.meetingUrl, meetingId);
+        return this.openMeeting(browser, normalizeMeetUrl(ctx.meetingUrl) ?? ctx.meetingUrl, meetingId);
       });
 
       const admitted = await this.timed(meetingId, 'admission', () => this.joinCall(page, ctx));

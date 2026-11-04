@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/pagination/pagination';
 import { MEETING_STATUSES } from '../../../common/types/api.types';
-import { IsMeetUrl } from '../../../common/validation/safe-url';
+import { IsMeetUrl, normalizeMeetUrl } from '../../../common/validation/safe-url';
 import { IsDateTime, IsOptionalNonNull } from '../../../common/validation/validators';
 
 /** One status or a comma-separated list, e.g. `completed` or `scheduled,in_progress`. */
@@ -53,8 +54,10 @@ export class CreateMeetingDto {
 
   @ApiProperty({
     example: 'https://meet.google.com/abc-defg-hij',
-    description: 'Google Meet link: `https://meet.google.com/xxx-xxxx-xxx`.',
+    description:
+      'Google Meet link: `https://meet.google.com/xxx-xxxx-xxx` or `https://meet.google.com/meet/xxx-xxxx-xxx`; stored in the first form.',
   })
+  @Transform(({ value }: { value: unknown }) => normalizeMeetUrl(value) ?? value)
   @IsMeetUrl()
   meetingUrl: string;
 

@@ -5,8 +5,13 @@ import { z } from 'zod';
 
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export const FONT_FAMILY_RE = /^[A-Za-z0-9 -]{1,64}$/;
-/** The only meeting URLs the bot will open. */
-export const MEET_URL_STRICT_RE = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(\?.*)?$/;
+/**
+ * The only meeting URLs the bot will open: https://meet.google.com/abc-defg-hij, also in the newer
+ * https://meet.google.com/meet/abc-defg-hij form (instant-meeting links, and where Meet redirects classic links),
+ * with an optional trailing slash and query string. Group 1 is the meeting code.
+ */
+export const MEET_URL_STRICT_RE =
+  /^https:\/\/meet\.google\.com\/(?:meet\/)?([a-z]{3}-[a-z]{4}-[a-z]{3})\/?(?:\?[^#\s]*)?$/;
 /** expo-router tab names used as `href` for `mobile_tab` navigation items. */
 export const MOBILE_ROUTE_RE = /^[a-z][a-z0-9-]{0,40}$/;
 
@@ -43,8 +48,15 @@ export function isSafeUrl(value: unknown, opts: SafeUrlOptions = {}): boolean {
   }
 }
 
+/** Canonical `https://meet.google.com/abc-defg-hij` for any accepted Meet link (query dropped), else null. */
+export function normalizeMeetUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 300) return null;
+  const match = MEET_URL_STRICT_RE.exec(value);
+  return match ? `https://meet.google.com/${match[1]}` : null;
+}
+
 export function isJoinableMeetUrl(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 300 && MEET_URL_STRICT_RE.test(value);
+  return normalizeMeetUrl(value) !== null;
 }
 
 // ---- zod helpers (settings + section content) ----

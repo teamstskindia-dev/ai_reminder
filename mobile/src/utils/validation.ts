@@ -1,4 +1,5 @@
-const MEET_RE = /^https:\/\/meet\.google\.com\/[a-z0-9-]{3,}(\?.*)?$/i;
+/** Includes the newer `/meet/abc-defg-hij` form (instant meetings); the API stores the canonical link. */
+const MEET_RE = /^https:\/\/meet\.google\.com\/(?:meet\/)?[a-z0-9-]{3,}\/?(\?.*)?$/i;
 
 /** Accepts "meet.google.com/abc-defg-hij" too, normalising to https. */
 export function normalizeMeetUrl(input: string): string {
