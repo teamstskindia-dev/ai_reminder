@@ -1,7 +1,8 @@
 import { applyDecorators, createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
-import { ApiBearerAuth, ApiCookieAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCookieAuth, ApiExtension } from '@nestjs/swagger';
 import { MaintenanceExempt } from '../../common/decorators/metadata.decorators';
 import { AppException } from '../../common/errors/app.exception';
+import { OPENAPI_EXT } from '../../common/swagger/api-docs.decorators';
 import type { AppRequest } from '../../common/http/request.types';
 import type { AdminRole } from '../../common/types/api.types';
 import type { AdminRow } from '../../infra/prisma/models';
@@ -12,21 +13,27 @@ export const AUTH_META = 'remi:auth';
 export type AuthRequirement = { kind: 'user' } | { kind: 'admin'; minRole: AdminRole };
 
 /** End-user endpoint: JWT from `Authorization: Bearer` or the `remi_at` cookie. */
-export const UserAuth = () =>
-  applyDecorators(
-    SetMetadata(AUTH_META, { kind: 'user' } satisfies AuthRequirement),
+export const UserAuth = () => {
+  const requirement: AuthRequirement = { kind: 'user' };
+  return applyDecorators(
+    SetMetadata(AUTH_META, requirement),
+    ApiExtension(OPENAPI_EXT.auth, requirement),
     ApiBearerAuth('bearer'),
     ApiCookieAuth(COOKIES.userAccess),
   );
+};
 
 /** Admin endpoint with a minimum role (role hierarchy super_admin > admin > editor > viewer). */
-export const AdminAuth = (minRole: AdminRole = 'viewer') =>
-  applyDecorators(
-    SetMetadata(AUTH_META, { kind: 'admin', minRole } satisfies AuthRequirement),
+export const AdminAuth = (minRole: AdminRole = 'viewer') => {
+  const requirement: AuthRequirement = { kind: 'admin', minRole };
+  return applyDecorators(
+    SetMetadata(AUTH_META, requirement),
+    ApiExtension(OPENAPI_EXT.auth, requirement),
     MaintenanceExempt(),
     ApiBearerAuth('admin-bearer'),
     ApiCookieAuth(COOKIES.adminAccess),
   );
+};
 
 export const CurrentUserId = createParamDecorator((_data: unknown, ctx: ExecutionContext): string => {
   const req = ctx.switchToHttp().getRequest<AppRequest>();

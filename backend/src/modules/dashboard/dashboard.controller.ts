@@ -1,5 +1,6 @@
 import { Controller, Get, Injectable, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiDataResponse } from '../../common/swagger/api-docs.decorators';
 import type { DashboardHome } from '../../common/types/api.types';
 import { safeTimeZone } from '../../common/utils/time.util';
 import { Prisma } from '../../infra/prisma/models';
@@ -10,7 +11,8 @@ import { PublicContentService } from '../content/public-content.service';
 import { toMeetingListItem } from '../meetings/meetings.mapper';
 import { LIVE_STATUSES, MeetingsRepository } from '../meetings/meetings.repository';
 import { RemindersService } from '../reminders/reminders.service';
-import { PlatformQueryDto } from '../public/public.controller';
+import { PlatformQueryDto } from '../public/public.dto';
+import { DashboardHome as DashboardHomeModel } from './dashboard.dto';
 
 @Injectable()
 export class DashboardService {
@@ -68,6 +70,8 @@ export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}
 
   @Get('home')
+  @ApiOperation({ summary: 'Get the home screen: weekly stats, upcoming meetings, recent reports, tasks and banners' })
+  @ApiDataResponse(DashboardHomeModel)
   home(@CurrentUserId() userId: string, @Query() q: PlatformQueryDto) {
     return this.dashboard.home(userId, q.platform);
   }

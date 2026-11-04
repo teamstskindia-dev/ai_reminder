@@ -1,3 +1,5 @@
+import { applyDecorators } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
 import { registerDecorator, ValidationOptions } from 'class-validator';
 import { z } from 'zod';
 
@@ -59,31 +61,47 @@ export const zHexColor = () => z.string().regex(HEX_COLOR_RE, 'must be a hex col
 export const zFontFamily = () =>
   z.string().regex(FONT_FAMILY_RE, 'must contain only letters, digits, spaces and hyphens');
 
-// ---- class-validator decorators (DTOs) ----
+/** Human list of the URL forms `opts` accepts, e.g. "an https:// URL or a relative /path". */
+export function describeSafeUrl(opts: SafeUrlOptions = {}): string {
+  const { relative = true, mailto = true, appScheme = true } = opts;
+  const forms = [
+    'an https:// URL',
+    ...(relative ? ['a relative /path'] : []),
+    ...(mailto ? ['a mailto: link'] : []),
+    ...(appScheme ? ['a remi:// link'] : []),
+  ];
+  return forms.length === 1 ? forms[0] : `${forms.slice(0, -1).join(', ')} or ${forms[forms.length - 1]}`;
+}
+
+// ---- class-validator decorators (DTOs); each also documents itself for OpenAPI ----
 export function IsSafeUrl(opts?: SafeUrlOptions, validationOptions?: ValidationOptions) {
-  return (object: object, propertyName: string) =>
-    registerDecorator({
-      name: 'isSafeUrl',
-      target: object.constructor,
-      propertyName,
-      options: {
-        message: `${propertyName} must be an https:// URL, a relative /path, mailto: or remi:// link`,
-        ...validationOptions,
-      },
-      validator: { validate: (value: unknown) => isSafeUrl(value, opts) },
-    });
+  const accepted = describeSafeUrl(opts);
+  return applyDecorators(
+    ApiProperty({ type: String, maxLength: 2048, description: `Must be ${accepted}.` }),
+    (object: object, propertyName: string | symbol) =>
+      registerDecorator({
+        name: 'isSafeUrl',
+        target: object.constructor,
+        propertyName: String(propertyName),
+        options: { message: `${String(propertyName)} must be ${accepted}`, ...validationOptions },
+        validator: { validate: (value: unknown) => isSafeUrl(value, opts) },
+      }),
+  );
 }
 
 export function IsMeetUrl(validationOptions?: ValidationOptions) {
-  return (object: object, propertyName: string) =>
-    registerDecorator({
-      name: 'isMeetUrl',
-      target: object.constructor,
-      propertyName,
-      options: {
-        message: `${propertyName} must be a Google Meet link like https://meet.google.com/abc-defg-hij`,
-        ...validationOptions,
-      },
-      validator: { validate: (value: unknown) => isJoinableMeetUrl(value) },
-    });
+  return applyDecorators(
+    ApiProperty({ type: String, pattern: MEET_URL_STRICT_RE.source, maxLength: 300 }),
+    (object: object, propertyName: string | symbol) =>
+      registerDecorator({
+        name: 'isMeetUrl',
+        target: object.constructor,
+        propertyName: String(propertyName),
+        options: {
+          message: `${String(propertyName)} must be a Google Meet link like https://meet.google.com/abc-defg-hij`,
+          ...validationOptions,
+        },
+        validator: { validate: (value: unknown) => isJoinableMeetUrl(value) },
+      }),
+  );
 }

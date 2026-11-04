@@ -155,6 +155,8 @@ jobs:
       - run: npm run lint:check
       - run: npm test -- --ci
       - run: npm run build
+      - name: OpenAPI document is complete (summaries, typed responses, no empty models)
+        run: npm run openapi:check
       - name: Migrations apply to a fresh pgvector database
         run: npx prisma migrate deploy
       - name: Seed applies on top of the migrations

@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -9,7 +9,6 @@ import {
   IsEmail,
   IsIn,
   IsInt,
-  IsISO8601,
   IsNumber,
   IsObject,
   IsOptional,
@@ -24,10 +23,19 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/pagination/pagination';
-import { ADMIN_ROLES, NAV_LOCATIONS, REMINDER_CHANNELS, SECTION_TYPES } from '../../../common/types/api.types';
+import {
+  ADMIN_ROLES,
+  MEETING_STATUSES,
+  NAV_LOCATIONS,
+  REMINDER_CHANNELS,
+  SECTION_TYPES,
+} from '../../../common/types/api.types';
 import type { AdminRole, NavLocation, ReminderChannel, SectionType } from '../../../common/types/api.types';
 import { IsSafeUrl } from '../../../common/validation/safe-url';
-import { IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
+import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
+import { IsDateTime, IsNullable, IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
+import { sectionContentSchema, settingValueSchema } from '../../content/content.openapi';
+import { STATUS_LIST_RE } from '../../meetings/dto/meetings.dto';
 
 const PASSWORD = { min: 12, max: 128 };
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -124,8 +132,12 @@ export class AdminMeetingsQueryDto extends PaginationQueryDto {
   @MaxLength(100)
   q?: string;
 
+  @ApiPropertyOptional({
+    description: `Status, or a comma-separated list of statuses: ${MEETING_STATUSES.join(', ')}.`,
+    pattern: STATUS_LIST_RE.source,
+  })
   @IsOptional()
-  @Matches(/^[a-z_]+(,[a-z_]+)*$/)
+  @Matches(STATUS_LIST_RE, { message: `status must be one of ${MEETING_STATUSES.join(', ')}` })
   status?: string;
 
   @IsOptional()
@@ -133,24 +145,26 @@ export class AdminMeetingsQueryDto extends PaginationQueryDto {
   userId?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateTime()
   from?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateTime()
   to?: string;
 }
 
 // ---------- settings ----------
 export class PutSettingDto {
+  @ApiProperty(settingValueSchema())
   @IsObject()
   value: Record<string, unknown>;
 }
 
 // ---------- sections ----------
 export class SectionsQueryDto {
+  @ApiPropertyOptional({ pattern: PAGE_KEY_RE.source, example: 'landing' })
   @IsOptional()
-  @Matches(PAGE_KEY_RE)
+  @Matches(PAGE_KEY_RE, { message: 'page must be a key like "landing"' })
   page?: string;
 
   @IsOptional()
@@ -159,6 +173,7 @@ export class SectionsQueryDto {
 }
 
 export class CreateSectionDto {
+  @ApiProperty({ pattern: PAGE_KEY_RE.source, example: 'landing' })
   @Matches(PAGE_KEY_RE, { message: 'page must be a key like "landing"' })
   page: string;
 
@@ -169,6 +184,7 @@ export class CreateSectionDto {
   @Length(1, 120)
   name: string;
 
+  @ApiProperty(sectionContentSchema())
   @IsObject()
   content: Record<string, unknown>;
 
@@ -182,8 +198,9 @@ export class CreateSectionDto {
 }
 
 export class UpdateSectionDto {
+  @ApiPropertyOptional({ pattern: PAGE_KEY_RE.source, example: 'landing' })
   @IsOptionalNonNull()
-  @Matches(PAGE_KEY_RE)
+  @Matches(PAGE_KEY_RE, { message: 'page must be a key like "landing"' })
   page?: string;
 
   @IsOptionalNonNull()
@@ -195,6 +212,7 @@ export class UpdateSectionDto {
   @Length(1, 120)
   name?: string;
 
+  @ApiPropertyOptional(sectionContentSchema())
   @IsOptionalNonNull()
   @IsObject()
   content?: Record<string, unknown>;
@@ -246,6 +264,7 @@ export class PageSeoDto {
 }
 
 export class CreatePageDto {
+  @ApiProperty({ pattern: SLUG_RE.source, example: 'privacy-policy' })
   @Matches(SLUG_RE, { message: 'slug must be lowercase words separated by hyphens' })
   @MaxLength(100)
   slug: string;
@@ -269,8 +288,9 @@ export class CreatePageDto {
 }
 
 export class UpdatePageDto {
+  @ApiPropertyOptional({ pattern: SLUG_RE.source, example: 'privacy-policy' })
   @IsOptionalNonNull()
-  @Matches(SLUG_RE)
+  @Matches(SLUG_RE, { message: 'slug must be lowercase words separated by hyphens' })
   @MaxLength(100)
   slug?: string;
 
@@ -417,17 +437,18 @@ export class CreateBannerDto {
   ctaUrl?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   startsAt?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   endsAt?: string | null;
 
   @IsOptionalNonNull()
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)
@@ -472,17 +493,18 @@ export class UpdateBannerDto {
   ctaUrl?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   startsAt?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   endsAt?: string | null;
 
   @IsOptionalNonNull()
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)
@@ -491,20 +513,24 @@ export class UpdateBannerDto {
 }
 
 // ---------- plans ----------
+/** Every limit must be sent; `null` means unlimited. */
 export class PlanLimitsDto {
-  @IsOptionalNullable()
+  @ApiInteger({ description: '`null` = unlimited.' })
+  @IsNullable()
   @IsInt()
   @Min(0)
   @Max(1_000_000)
   meetingsPerMonth: number | null;
 
-  @IsOptionalNullable()
+  @ApiInteger({ description: '`null` = unlimited.' })
+  @IsNullable()
   @IsInt()
   @Min(0)
   @Max(1_000_000)
   aiQueriesPerDay: number | null;
 
-  @IsOptionalNullable()
+  @ApiInteger({ description: '`null` = unlimited.' })
+  @IsNullable()
   @IsInt()
   @Min(0)
   @Max(10_000_000)
@@ -512,7 +538,8 @@ export class PlanLimitsDto {
 }
 
 export class CreatePlanDto {
-  @Matches(SLUG_RE)
+  @ApiProperty({ pattern: SLUG_RE.source, example: 'pro' })
+  @Matches(SLUG_RE, { message: 'slug must be lowercase words separated by hyphens' })
   @MaxLength(60)
   slug: string;
 
@@ -561,6 +588,7 @@ export class CreatePlanDto {
   @IsBoolean()
   isDefault?: boolean;
 
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)
@@ -573,8 +601,9 @@ export class CreatePlanDto {
 }
 
 export class UpdatePlanDto {
+  @ApiPropertyOptional({ pattern: SLUG_RE.source, example: 'pro' })
   @IsOptionalNonNull()
-  @Matches(SLUG_RE)
+  @Matches(SLUG_RE, { message: 'slug must be lowercase words separated by hyphens' })
   @MaxLength(60)
   slug?: string;
 
@@ -629,6 +658,7 @@ export class UpdatePlanDto {
   @IsBoolean()
   isDefault?: boolean;
 
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)
@@ -664,7 +694,8 @@ export class UploadMediaDto {
 }
 
 export class UpdateMediaDto {
-  @IsOptionalNullable()
+  /** Send `null` to clear the alt text. */
+  @IsNullable()
   @IsString()
   @MaxLength(300)
   alt: string | null;
@@ -738,12 +769,14 @@ export class BroadcastAudienceDto {
   @IsIn(['all', 'users', 'plan'])
   type: 'all' | 'users' | 'plan';
 
+  /** Required when `type` is `users`. */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10_000)
   @IsUUID('all', { each: true })
   userIds?: string[];
 
+  /** Required when `type` is `plan`. */
   @IsOptional()
   @IsUUID()
   planId?: string;
@@ -768,6 +801,8 @@ export class CreateBroadcastDto {
   @Type(() => BroadcastAudienceDto)
   audience: BroadcastAudienceDto;
 
+  /** Deep-link data delivered with the notification. */
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   data?: Record<string, unknown>;
@@ -786,6 +821,7 @@ export class CreateAdminDto {
   @IsIn(ADMIN_ROLES)
   role: AdminRole;
 
+  /** 12–128 characters. */
   @IsString()
   @MinLength(PASSWORD.min)
   @MaxLength(PASSWORD.max)

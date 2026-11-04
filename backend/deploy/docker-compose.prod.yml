@@ -1,8 +1,9 @@
 # Remi — PRODUCTION backend on the shared Hostinger VPS (Compose project `remi-prod`, directory /opt/remi).
 # Self-contained: it never touches the server's other projects (tsk_group, leogix-prod) or their containers.
 #   - private GHCR image tagged :production, updated by a project-scoped Watchtower (scope `remi` only);
-#   - the API listens on 127.0.0.1:4000 only. There is no public entry yet: ports 80/443 belong to another project, and
-#     a public HTTPS address will be added once Remi has its own domain (see docs/DEPLOYMENT.md §2).
+#   - public HTTPS is https://api.leogix.io through Cloudflare, which forwards to Remi's own `edge` Caddy on port 8444
+#     (ports 80/443 belong to another project); edge uses a Cloudflare Origin CA certificate (no renewals);
+#   - the API itself listens on 127.0.0.1:4000 only.
 #
 #   /opt/remi/docker-compose.yml   this file (copy it there when it changes)
 #   /opt/remi/.env.production      application secrets (Supabase, JWT, Google, Gemini, …), chmod 600, never in git
@@ -108,15 +109,21 @@ services:
       retries: 3
     stop_grace_period: 60s
 
-  # Public HTTPS without opening ports: an outbound Cloudflare Tunnel. The public hostname (e.g. api.<domain>) and its
-  # target (http://api:4000) are set on the tunnel in the Cloudflare dashboard. Off until enabled with
-  # COMPOSE_PROFILES=tunnel + TUNNEL_TOKEN in /opt/remi/.env; only this container receives the token.
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    profiles: ["tunnel"]
-    command: ["tunnel", "--no-autoupdate", "run"]
+  # Remi's own HTTPS origin on port 8444 (80/443 belong to another project on this server). Public URL:
+  # https://api.leogix.io via Cloudflare (Origin Rule → 8444). Serves the Cloudflare Origin CA certificate in edge/certs
+  # and accepts connections from Cloudflare only. Enabled with COMPOSE_PROFILES=edge (+ API_DOMAIN in /opt/remi/.env).
+  edge:
+    image: caddy:2-alpine
+    profiles: ["edge"]
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      API_DOMAIN: ${API_DOMAIN:-}
+    ports:
+      - "8444:8444"
+    volumes:
+      - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./edge/certs:/certs:ro
+      - edge-data:/data
+      - edge-config:/config
     labels:
       com.centurylinklabs.watchtower.scope: remi
     depends_on:
@@ -150,6 +157,8 @@ services:
 
 volumes:
   redis-data:
+  edge-data:
+  edge-config:
 
 networks:
   internal: {}

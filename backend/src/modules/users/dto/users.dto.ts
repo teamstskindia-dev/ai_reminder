@@ -1,8 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsInt, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
 import { IsOptionalNonNull, IsOptionalNullable, IsTimeZone } from '../../../common/validation/validators';
 
 export class UpdateMeDto {
+  @ApiPropertyOptional({ example: 'Asha Rao' })
   @IsOptionalNonNull()
   @IsString()
   @Length(1, 120)
@@ -36,6 +38,8 @@ export class UpdateUserSettingsDto {
   @Length(1, 60)
   botName?: string | null;
 
+  /** Minutes before a meeting to send the reminder (0 = off). */
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)
@@ -46,6 +50,8 @@ export class UpdateUserSettingsDto {
   @IsBoolean()
   dailyDigest?: boolean;
 
+  /** Local hour (user time zone) for the daily digest. */
+  @ApiInteger()
   @IsOptionalNonNull()
   @IsInt()
   @Min(0)

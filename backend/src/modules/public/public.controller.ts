@@ -1,24 +1,12 @@
 import { Controller, Get, Headers, Param, Query, Res } from '@nestjs/common';
-import { ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, Matches } from 'class-validator';
+import { ApiHeader, ApiNotModifiedResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { MaintenanceExempt } from '../../common/decorators/metadata.decorators';
 import { AppException } from '../../common/errors/app.exception';
+import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { PublicContentService } from '../content/public-content.service';
-
-export class PlatformQueryDto {
-  @ApiPropertyOptional({ enum: ['web', 'mobile'], default: 'web' })
-  @IsOptional()
-  @IsIn(['web', 'mobile'])
-  platform: 'web' | 'mobile' = 'web';
-}
-
-export class SectionsQueryDto extends PlatformQueryDto {
-  @ApiPropertyOptional({ default: 'landing' })
-  @IsOptional()
-  @Matches(/^[a-z][a-z0-9_]{0,40}$/, { message: 'page must be a page key like "landing"' })
-  page: string = 'landing';
-}
+import { CmsPage, Plan, PublicConfig, Section } from '../content/content.responses.dto';
+import { PlatformQueryDto, PublicSectionsQueryDto } from './public.dto';
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -29,6 +17,14 @@ export class PublicController {
   constructor(private readonly content: PublicContentService) {}
 
   @Get('config')
+  @ApiOperation({
+    summary: 'Get branding, theme, feature flags, navigation and banners',
+    description:
+      'Cache with the `ETag`: send it back as `If-None-Match` and the API answers `304` while nothing changed.',
+  })
+  @ApiHeader({ name: 'If-None-Match', required: false, description: 'ETag from a previous response.' })
+  @ApiDataResponse(PublicConfig, { description: 'Current public config. The `ETag` header carries `version`.' })
+  @ApiNotModifiedResponse({ description: 'The config has not changed since the given ETag.' })
   async config(
     @Query() q: PlatformQueryDto,
     @Headers('if-none-match') ifNoneMatch: string | undefined,
@@ -47,17 +43,29 @@ export class PublicController {
   }
 
   @Get('sections')
-  sections(@Query() q: SectionsQueryDto) {
+  @ApiOperation({ summary: 'List the active sections of a CMS page (landing page, onboarding slides)' })
+  @ApiDataResponse(Section, { isArray: true })
+  sections(@Query() q: PublicSectionsQueryDto) {
     return this.content.sections(q.page, q.platform);
   }
 
   @Get('pages/:slug')
+  @ApiOperation({ summary: 'Get a published CMS page by slug' })
+  @ApiParam({
+    name: 'slug',
+    example: 'privacy-policy',
+    schema: { type: 'string', pattern: SLUG_RE.source, maxLength: 100 },
+  })
+  @ApiDataResponse(CmsPage)
+  @ApiErrors('NOT_FOUND')
   page(@Param('slug') slug: string) {
     if (slug.length > 100 || !SLUG_RE.test(slug)) throw AppException.notFound('Page');
     return this.content.page(slug);
   }
 
   @Get('plans')
+  @ApiOperation({ summary: 'List the active pricing plans' })
+  @ApiDataResponse(Plan, { isArray: true })
   plans() {
     return this.content.plans();
   }

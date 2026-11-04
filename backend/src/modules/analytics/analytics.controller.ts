@@ -1,31 +1,14 @@
 import { Controller, Get, Injectable, Query } from '@nestjs/common';
-import { ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, Matches } from 'class-validator';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppException } from '../../common/errors/app.exception';
+import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import type { AnalyticsOverview } from '../../common/types/api.types';
 import { parseLocalDate, safeTimeZone, startOfLocalDay } from '../../common/utils/time.util';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import { SettingsService } from '../content/settings.service';
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/;
-
-export class AnalyticsQueryDto {
-  @ApiPropertyOptional({ enum: ['7d', '30d', '90d'], default: '30d' })
-  @IsOptional()
-  @IsIn(['7d', '30d', '90d'])
-  range?: '7d' | '30d' | '90d';
-
-  @ApiPropertyOptional({ description: 'YYYY-MM-DD (user time zone) or ISO timestamp' })
-  @IsOptional()
-  @Matches(DATE_RE, { message: 'from must be YYYY-MM-DD or an ISO timestamp' })
-  from?: string;
-
-  @IsOptional()
-  @Matches(DATE_RE, { message: 'to must be YYYY-MM-DD or an ISO timestamp' })
-  to?: string;
-}
+import { AnalyticsOverview as AnalyticsOverviewModel, AnalyticsQueryDto } from './analytics.dto';
 
 /** Resolves the [from, to) window in the user's time zone. */
 export function resolveRange(q: AnalyticsQueryDto, tz: string, now = new Date()): { from: Date; to: Date } {
@@ -78,6 +61,12 @@ export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
   @Get('overview')
+  @ApiOperation({
+    summary: 'Get meeting analytics for a date range',
+    description: 'Totals, daily series, sentiment, top topics and participants, and meetings by hour of day.',
+  })
+  @ApiDataResponse(AnalyticsOverviewModel)
+  @ApiErrors('FORBIDDEN')
   overview(@CurrentUserId() userId: string, @Query() q: AnalyticsQueryDto) {
     return this.analytics.overview(userId, q);
   }

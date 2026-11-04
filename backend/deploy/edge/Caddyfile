@@ -1,0 +1,39 @@
+# Remi's own HTTPS origin on port 8444 (ports 80/443 on the shared VPS belong to another project). The public URL is
+# https://api.leogix.io: Cloudflare terminates TLS on 443 and an Origin Rule forwards to this port (SSL mode Full
+# (strict)). The certificate is a Cloudflare Origin CA certificate (edge/certs, valid until 2041, key generated on the
+# server), so there is nothing to renew and Caddy's own certificate automation is off. Only Cloudflare may connect.
+# No access log on purpose: request URIs carry OAuth code/state values.
+{
+	auto_https off
+	admin localhost:2019
+	servers {
+		# Behind Cloudflare (api.leogix.io → port 8444 via an Origin Rule): trust CF-Connecting-IP only when the request
+		# really comes from Cloudflare's published ranges (https://www.cloudflare.com/ips), so rate limits and login
+		# lockouts see the visitor, not Cloudflare. Requests from anywhere else keep their own address.
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+https://{$API_DOMAIN}:8444 {
+	tls /certs/origin.pem /certs/origin.key
+
+	# Refuse anything that does not come from Cloudflare (direct hits on :8444 would bypass Cloudflare's protection).
+	@not_cloudflare not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	abort @not_cloudflare
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# REST, Socket.IO (WebSocket upgrades are proxied automatically) and the OAuth callback. The API trusts exactly one
+	# proxy hop (TRUST_PROXY=1), so hand it the resolved visitor address as the only X-Forwarded-For entry.
+	reverse_proxy api:4000 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}

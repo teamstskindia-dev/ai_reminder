@@ -40,15 +40,21 @@ The VPS also runs other projects (`tsk_group` in `/root/tsk_group`, `leogix-prod
 - **No public address yet.** Ports 80/443 belong to another project's proxy, and Remi does not share it. From your
   machine, reach the API through an SSH tunnel:
   `ssh -N -L 4000:127.0.0.1:4000 root@194.238.16.75`, then use `http://localhost:4000`.
-- **Public HTTPS via Cloudflare Tunnel** (chosen; Remi-only, no ports). The `cloudflared` service in the compose file
-  (profile `tunnel`) opens an outbound tunnel to Cloudflare. To enable it:
-  1. Put the domain's DNS on Cloudflare.
-  2. In Zero Trust → Networks → Tunnels, create a tunnel (type *Cloudflared*) and copy its token.
-  3. Add a public hostname `api.<domain>`, service **HTTP**, URL `api:4000`.
-  4. In `/opt/remi/.env`, add `COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN=<token>` (chmod 600), then run
-     `docker compose up -d`.
-  5. Set `API_PUBLIC_URL` / `GOOGLE_REDIRECT_URI` in `/opt/remi/.env.production`, register the callback in Google, and
-     set the GitHub variable `API_PUBLIC_URL`.
+- **Public HTTPS: `https://api.leogix.io`** through Cloudflare. `leogix.io`'s DNS has been on Cloudflare since 2026-11-04.
+  - Only `api` is Proxied (🟠). `admin`, `web`, `@` and `www` are DNS only and point to Vercel and the existing site as
+    before.
+  - Cloudflare terminates TLS on 443 (SSL mode **Full (strict)**, minimum TLS 1.2, Always Use HTTPS). An **Origin Rule**
+    (`http.host eq "api.leogix.io"` → port **8444**) forwards to Remi's own `edge` Caddy, because 80/443 on the VPS belong
+    to another project.
+  - `edge` serves a **Cloudflare Origin CA certificate** (`/opt/remi/edge/certs`, valid until **2041-10-31**; the key was
+    generated on the server and never left it). Nothing needs renewing.
+  - `edge` accepts connections **only from Cloudflare's IP ranges**, and passes the visitor's IP from `CF-Connecting-IP`
+    to the API for rate limits and lockouts. If Cloudflare publishes new ranges (https://www.cloudflare.com/ips), update
+    both lists in `backend/deploy/edge/Caddyfile`.
+  - `/opt/remi/.env`: `COMPOSE_PROFILES=edge`, `API_DOMAIN=api.leogix.io`. `.env.production`:
+    `API_PUBLIC_URL=https://api.leogix.io` and
+    `GOOGLE_REDIRECT_URI=https://api.leogix.io/api/v1/auth/google/callback`.
+  - Cloudflare's free plan caps request bodies at 100 MB, so recording uploads above that are rejected at the edge.
 
 ## 3. Release pipeline (`.github/workflows/ci-cd.yml`)
 
@@ -100,7 +106,7 @@ origin, which the rollout check uses. Leave it unset while the API is private.
    - **Website:** `NEXT_PUBLIC_API_URL`, `API_URL_INTERNAL` (= the API URL), `NEXT_PUBLIC_SITE_URL`, and
      `REVALIDATE_SECRET` set to the same value as `WEB_REVALIDATE_SECRET` in `.env.production`.
    - **Admin (same-origin mode, required on `*.vercel.app`):** `NEXT_PUBLIC_API_PROXY=true`,
-     `API_PROXY_TARGET=https://api.<domain>` and `NEXT_PUBLIC_WEB_URL`. The admin then calls `/api/v1` on its own domain
+     `API_PROXY_TARGET=https://api.leogix.io` and `NEXT_PUBLIC_WEB_URL`. The admin then calls `/api/v1` on its own domain
      and Vercel forwards it to the API, so the login cookies belong to the admin's domain. Redeploy after changing
      these: `NEXT_PUBLIC_*` values are baked in at build time.
 3. Secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`.

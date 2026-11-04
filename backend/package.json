@@ -21,6 +21,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "openapi:generate": "node dist/scripts/generate-openapi.js --check --out ../docs/openapi.json",
+    "openapi:check": "node dist/scripts/generate-openapi.js --check",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

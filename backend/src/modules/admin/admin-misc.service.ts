@@ -25,7 +25,8 @@ import { TemplatesRepository } from '../notifications/notifications.repository';
 import { normalizeChannels } from '../reminders/reminders.mapper';
 import { AuditLogsQueryDto, CreateBroadcastDto, PutPromptDto, PutTemplateDto } from './dto/admin.dto';
 
-const KNOWN_PROMPTS = new Set(['meeting_report', 'assistant_answer', 'audio_transcription']);
+export const KNOWN_PROMPT_KEYS = ['meeting_report', 'assistant_answer', 'audio_transcription'] as const;
+const KNOWN_PROMPTS = new Set<string>(KNOWN_PROMPT_KEYS);
 
 function toBroadcast(row: BroadcastRow & { creator?: { id: string; name: string } | null }): Broadcast {
   return {
