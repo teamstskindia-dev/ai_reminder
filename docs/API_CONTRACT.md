@@ -58,8 +58,9 @@ type ErrorCode =
 
 Status codes: `BAD_REQUEST` and `VALIDATION_ERROR` 400 · `UNAUTHORIZED` and `TOKEN_EXPIRED` 401 · `FORBIDDEN` and
 `PLAN_LIMIT_REACHED` 403 · `NOT_FOUND` 404 · `CONFLICT` 409 · `PAYLOAD_TOO_LARGE` 413 · `UNSUPPORTED_MEDIA_TYPE` 415 ·
-`RATE_LIMITED` 429 · `INTERNAL_ERROR` 500 · `UPSTREAM_ERROR` 502 (Google, Gemini, Cloudinary or another dependency
-failed; safe to retry) · `MAINTENANCE` 503.
+`RATE_LIMITED` 429 · `INTERNAL_ERROR` 500 · `UPSTREAM_ERROR` 503 (Google, Gemini, Cloudinary or another dependency
+failed; safe to retry; not 502, because Cloudflare replaces origin 502/504 responses with its own CORS-less page) ·
+`MAINTENANCE` 503. Clients distinguish the two 503s by `error.code`.
 
 Resources that exist but belong to another user return `404 NOT_FOUND`, never 403, so IDs cannot be enumerated.
 Clients show `message` to the user, and show `requestId` as a "Reference" on unexpected errors (5xx) so support can

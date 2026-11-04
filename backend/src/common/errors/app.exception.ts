@@ -20,7 +20,10 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   UNSUPPORTED_MEDIA_TYPE: 415,
   RATE_LIMITED: 429,
   INTERNAL_ERROR: 500,
-  UPSTREAM_ERROR: 502,
+  // 503, not 502: Cloudflare (in front of api.leogix.io) replaces origin 502/504 responses with its own HTML page,
+  // which has no CORS headers — browsers would see a network error instead of this JSON error. Clients tell it
+  // apart from MAINTENANCE (also 503) by `error.code`.
+  UPSTREAM_ERROR: 503,
   MAINTENANCE: 503,
 };
 
@@ -167,7 +170,7 @@ export class UpstreamError extends AppException {
     super(
       'UPSTREAM_ERROR',
       message ?? `${providerLabel(provider)} is unavailable right now. Please try again.`,
-      502,
+      ERROR_STATUS.UPSTREAM_ERROR,
       undefined,
       cause,
     );
