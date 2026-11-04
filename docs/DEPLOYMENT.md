@@ -40,15 +40,22 @@ The VPS also runs other projects (`tsk_group` in `/root/tsk_group`, `leogix-prod
 - **No public address yet.** Ports 80/443 belong to another project's proxy, and Remi does not share it. From your
   machine, reach the API through an SSH tunnel:
   `ssh -N -L 4000:127.0.0.1:4000 root@194.238.16.75`, then use `http://localhost:4000`.
-- **Public HTTPS via Cloudflare Tunnel** (chosen; Remi-only, no ports). The `cloudflared` service in the compose file
-  (profile `tunnel`) opens an outbound tunnel to Cloudflare. To enable it:
-  1. Put the domain's DNS on Cloudflare.
-  2. In Zero Trust → Networks → Tunnels, create a tunnel (type *Cloudflared*) and copy its token.
-  3. Add a public hostname `api.<domain>`, service **HTTP**, URL `api:4000`.
-  4. In `/opt/remi/.env`, add `COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN=<token>` (chmod 600), then run
-     `docker compose up -d`.
-  5. Set `API_PUBLIC_URL` / `GOOGLE_REDIRECT_URI` in `/opt/remi/.env.production`, register the callback in Google, and
-     set the GitHub variable `API_PUBLIC_URL`.
+- **Public HTTPS: `https://api.leogix.io:8444`** (Remi-only). Remi's own `edge` Caddy (compose profile `edge`)
+  publishes port **8444**, because 80/443 belong to another project. The certificate is Let's Encrypt via **DNS-01**:
+  - The `certbot` tool container runs `acme/hostinger_dns_hook.py`, which writes and then deletes the
+    `_acme-challenge.api` TXT record through Hostinger's DNS API, using `acme/hostinger.env` (`HOSTINGER_API_TOKEN`,
+    `HOSTINGER_DNS_ZONE=leogix.io`, chmod 600). The token is used only by that container.
+  - **Renewal is manual** (no scheduler on the server). The current certificate expires **2027-02-02**. Between
+    2027-01-03 and 2027-01-31, run `/opt/remi/acme/renew.sh` on the server. It renews when within 30 days of expiry
+    (safe to run any time) and reloads `edge`. Check the expiry with
+    `cd /opt/remi && docker compose run --rm --no-deps certbot certificates`.
+
+  DNS (Hostinger, the account that owns leogix.io): `A  api  194.238.16.75`.
+
+  `/opt/remi/.env`: `COMPOSE_PROFILES=edge`, `API_DOMAIN=api.leogix.io`.
+
+  `.env.production`: `API_PUBLIC_URL=https://api.leogix.io:8444` and
+  `GOOGLE_REDIRECT_URI=https://api.leogix.io:8444/api/v1/auth/google/callback`. Register the redirect URI in Google.
 
 ## 3. Release pipeline (`.github/workflows/ci-cd.yml`)
 
@@ -100,7 +107,7 @@ origin, which the rollout check uses. Leave it unset while the API is private.
    - **Website:** `NEXT_PUBLIC_API_URL`, `API_URL_INTERNAL` (= the API URL), `NEXT_PUBLIC_SITE_URL`, and
      `REVALIDATE_SECRET` set to the same value as `WEB_REVALIDATE_SECRET` in `.env.production`.
    - **Admin (same-origin mode, required on `*.vercel.app`):** `NEXT_PUBLIC_API_PROXY=true`,
-     `API_PROXY_TARGET=https://api.<domain>` and `NEXT_PUBLIC_WEB_URL`. The admin then calls `/api/v1` on its own domain
+     `API_PROXY_TARGET=https://api.leogix.io:8444` and `NEXT_PUBLIC_WEB_URL`. The admin then calls `/api/v1` on its own domain
      and Vercel forwards it to the API, so the login cookies belong to the admin's domain. Redeploy after changing
      these: `NEXT_PUBLIC_*` values are baked in at build time.
 3. Secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`.
