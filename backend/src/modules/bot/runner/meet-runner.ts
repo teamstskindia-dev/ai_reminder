@@ -27,6 +27,8 @@ const BINDING = '__remiCaption';
 const POLL_MS = 2000;
 /** Chromium's single-instance locks; stale copies after a crash would stop the persistent profile from opening. */
 const CHROME_LOCK_FILES = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+/** Google sets these only for a signed-in account. */
+const GOOGLE_SESSION_COOKIES = new Set(['SID', '__Secure-1PSID', '__Secure-3PSID']);
 const NAVIGATION_TIMEOUT_MS = 60_000;
 const JOIN_BUTTON_TIMEOUT_MS = 2 * 60_000;
 const MISSING_IN_CALL_MS = 15_000;
@@ -206,9 +208,9 @@ export class MeetRunner {
           // button exists. Not a host decision, so say what actually fixes it.
           throw new BotStepError(
             'join',
-            this.config.bot.profileDir
+            (await this.isSignedInToGoogle(page))
               ? 'Google Meet refused the bot account (check the meeting allows guests from outside the organization)'
-              : 'Google Meet refused the bot because it is not signed in to a Google account (see docs/DEPLOYMENT.md → bot sign-in)',
+              : 'Google Meet refused the bot because it is not signed in to a Google account (run the one-time bot sign-in: docs/DEPLOYMENT.md)',
           );
         }
         throw new BotStepError('admission', 'Host denied the request to join');
@@ -251,6 +253,16 @@ export class MeetRunner {
       await session.sleep(POLL_MS);
     }
     return false;
+  }
+
+  /** True when the browser holds a Google session (the bot profile was signed in with `bot-login`). Never logs values. */
+  private async isSignedInToGoogle(page: Page): Promise<boolean> {
+    try {
+      const cookies = await page.browser().cookies();
+      return cookies.some((c) => /(^|\.)google\.com$/.test(c.domain) && GOOGLE_SESSION_COOKIES.has(c.name));
+    } catch {
+      return false;
+    }
   }
 
   private async startCaptions(page: Page, ctx: RunContext): Promise<void> {
