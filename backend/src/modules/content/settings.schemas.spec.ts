@@ -91,7 +91,8 @@ const SEED: Record<SettingKey, unknown> = {
       inCallIndicator: "button[aria-label='Leave call']",
       waitingRoomText:
         "Asking to join|Please wait until a meeting host brings you into the call|You'll join the call when someone lets you in",
-      deniedText: "You can't join this video call|You can't join this call|Someone in the call denied your request|You've been removed",
+      deniedText:
+        "You can't join this video call|You can't join this call|Someone in the call denied your request|You've been removed",
       endedText: "You left the meeting|The call has ended|Return to home screen|You've been removed from the meeting",
     },
   },
