@@ -63,6 +63,12 @@ export const SETTINGS_DEFAULTS: SettingValue = {
     enableEmbeddings: true,
   },
   bot: {
+    provider: 'self_hosted',
+    recall: {
+      transcription: 'recallai_streaming',
+      languageCode: 'auto',
+      deleteMediaAfterImport: true,
+    },
     botName: 'Remi Notetaker',
     joinBeforeMinutes: 1,
     waitingRoomTimeoutMinutes: 10,

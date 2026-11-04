@@ -4,6 +4,7 @@ import { GeminiService } from './gemini/gemini.service';
 import { GoogleOAuthService } from './google/google-oauth.service';
 import { MailService } from './mail/mail.service';
 import { PushService } from './push/push.service';
+import { RecallClient } from './recall/recall.client';
 import { RealtimeEmitter } from './realtime/realtime-emitter.service';
 import { StorageService } from './storage/storage.service';
 
@@ -17,6 +18,7 @@ import { StorageService } from './storage/storage.service';
     CloudinaryService,
     MailService,
     PushService,
+    RecallClient,
     RealtimeEmitter,
   ],
   exports: [
@@ -26,6 +28,7 @@ import { StorageService } from './storage/storage.service';
     CloudinaryService,
     MailService,
     PushService,
+    RecallClient,
     RealtimeEmitter,
   ],
 })

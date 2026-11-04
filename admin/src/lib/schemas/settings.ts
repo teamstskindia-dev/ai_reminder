@@ -7,6 +7,7 @@ import type {
   Branding,
   Features,
   NotificationSettings,
+  RecallBotSettings,
   Seo,
   SettingKey,
   Theme,
@@ -126,7 +127,18 @@ export const selectorValue = z
   .max(2000, 'Keep selectors under 2000 characters')
   .refine((v) => !/[\r\n]/.test(v), 'Selectors must be on a single line');
 
+export const recallBotSettingsSchema = z.object({
+  transcription: z.enum(['recallai_streaming', 'meeting_captions']),
+  languageCode: z
+    .string()
+    .trim()
+    .regex(/^(auto|[a-z]{2,3}(?:[_-][A-Za-z]{2,4})?)$/, 'Use "auto" or a language code like en, en_us or de'),
+  deleteMediaAfterImport: z.boolean(),
+}) satisfies z.ZodType<RecallBotSettings>;
+
 export const botSettingsSchema = z.object({
+  provider: z.enum(['self_hosted', 'recall']),
+  recall: recallBotSettingsSchema,
   botName: requiredString('Bot name').max(60, 'Keep the bot name under 60 characters'),
   joinBeforeMinutes: intRange(0, 30, 'Join before'),
   waitingRoomTimeoutMinutes: intRange(1, 60, 'Waiting room timeout'),

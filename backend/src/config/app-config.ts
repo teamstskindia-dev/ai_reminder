@@ -141,6 +141,19 @@ export class AppConfig {
     };
   }
 
+  /** Recall.ai API (host per region) and webhook verification secret. Never log these values. */
+  get recall() {
+    const region = this.env.RECALL_REGION;
+    return {
+      apiKey: this.env.RECALL_API_KEY,
+      region,
+      baseUrl: `https://${region}.recall.ai`,
+      webhookSecret: this.env.RECALL_WEBHOOK_SECRET,
+      configured: !!this.env.RECALL_API_KEY,
+      webhookConfigured: !!this.env.RECALL_WEBHOOK_SECRET,
+    };
+  }
+
   get calendarSyncIntervalMinutes(): number {
     return this.env.CALENDAR_SYNC_INTERVAL_MINUTES;
   }

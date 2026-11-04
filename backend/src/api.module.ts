@@ -17,6 +17,7 @@ import { StorageService } from './infra/storage/storage.service';
 import { ActionItemsController } from './modules/action-items/action-items.controller';
 import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { AdminAuthController } from './modules/admin/admin-auth.controller';
+import { AdminBotController } from './modules/admin/admin-bot.controller';
 import { AdminContentController } from './modules/admin/admin-content.controller';
 import { AdminSystemController } from './modules/admin/admin-system.controller';
 import { AdminUsersController } from './modules/admin/admin-users.controller';
@@ -29,6 +30,7 @@ import { AuthController } from './modules/auth/auth.controller';
 import { AuthGuard } from './modules/auth/auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { BotSchedulingModule } from './modules/bot/bot-scheduling.module';
+import { RecallWebhookController } from './modules/bot/recall/recall-webhook.controller';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { ContentModule } from './modules/content/content.module';
 import { DashboardController, DashboardService } from './modules/dashboard/dashboard.controller';
@@ -101,10 +103,12 @@ class StorageBootstrap implements OnApplicationBootstrap {
     NotificationsController,
     DevicesController,
     AssistantController,
+    RecallWebhookController,
     AdminAuthController,
     AdminUsersController,
     AdminContentController,
     AdminSystemController,
+    AdminBotController,
   ],
   providers: [
     DashboardService,

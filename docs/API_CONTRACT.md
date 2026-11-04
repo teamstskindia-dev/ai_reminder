@@ -682,7 +682,7 @@ interface AdminDashboardStats {
 }
 
 interface QueueStats {
-  name: 'calendar-sync' | 'meeting-bot' | 'ai-processing' | 'notifications' | 'digest';
+  name: 'calendar-sync' | 'meeting-bot' | 'bot-events' | 'ai-processing' | 'notifications' | 'digest';
   waiting: number; active: number; delayed: number; failed: number; completed: number; paused: boolean;
 }
 
@@ -713,6 +713,12 @@ interface SettingValue {
     enableEmbeddings: boolean;
   };
   bot: {
+    provider: 'self_hosted' | 'recall';  // who joins: Chromium runner (bot container) or Recall.ai
+    recall: {
+      transcription: 'recallai_streaming' | 'meeting_captions';  // Recall.ai STT (paid) or Meet captions (free)
+      languageCode: string;              // "auto" or a code like en, en_us, de
+      deleteMediaAfterImport: boolean;   // delete recording/transcript on Recall.ai once imported
+    };
     botName: string;
     joinBeforeMinutes: number;
     waitingRoomTimeoutMinutes: number;
@@ -826,6 +832,22 @@ interface AuditLog {
 | GET | `/admin/system/queues/:name/failed` | admin | `page`, `limit` | `FailedJob[]` + meta |
 | POST | `/admin/system/queues/:name/retry-failed` | admin | — | `{ retried: number }` |
 | POST | `/admin/system/cache/flush` | admin | — | `{ flushed: number }` |
+| GET | `/admin/bot/providers` | viewer | — | `BotProviderStatus` |
+| POST | `/admin/bot/recall/test` | admin | — | `{ ok: boolean; message: string }` |
+
+```ts
+// Secrets are never returned, only whether they are set on the server.
+interface BotProviderStatus {
+  recall: { apiKeyConfigured: boolean; webhookSecretConfigured: boolean; region: string; webhookUrl: string; dashboardUrl: string };
+  selfHosted: { mode: 'puppeteer' | 'simulate'; persistentProfile: boolean };
+}
+```
+
+**Provider webhooks** (called by Recall.ai, not by clients; not wrapped in the envelope):
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| POST | `/webhooks/recall` | `webhook-id` / `webhook-timestamp` / `webhook-signature` (HMAC-SHA256 with `RECALL_WEBHOOK_SECRET`, ±5 min) | `{ received: true }` · `401` when unsigned, tampered or stale |
 
 ---
 

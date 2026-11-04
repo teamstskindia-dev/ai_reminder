@@ -190,6 +190,10 @@ model Meeting {
   status          String    @default("scheduled")
   autoJoin        Boolean   @default(true) @map("auto_join")
   botJobId        String?   @map("bot_job_id")
+  /// Which bot provider handled the meeting: self_hosted (Chromium runner) or recall (Recall.ai).
+  botProvider     String?   @map("bot_provider")
+  /// Provider-side bot id (Recall.ai bot UUID); webhooks are matched on it.
+  externalBotId   String?   @unique @map("external_bot_id")
   botJoinedAt     DateTime? @map("bot_joined_at") @db.Timestamptz(6)
   botLeftAt       DateTime? @map("bot_left_at") @db.Timestamptz(6)
   failureReason   String?   @map("failure_reason")

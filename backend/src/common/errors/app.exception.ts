@@ -191,6 +191,7 @@ function providerLabel(provider: string): string {
     expo: 'The push service',
     smtp: 'The email service',
     storage: 'File storage',
+    recall: 'The meeting bot service',
   };
   return labels[provider] ?? 'A dependency';
 }

@@ -463,7 +463,14 @@ export interface AdminMeetingListItem extends MeetingListItem {
   failureReason: string | null;
 }
 
-export const QUEUE_NAMES = ['calendar-sync', 'meeting-bot', 'ai-processing', 'notifications', 'digest'] as const;
+export const QUEUE_NAMES = [
+  'calendar-sync',
+  'meeting-bot',
+  'bot-events',
+  'ai-processing',
+  'notifications',
+  'digest',
+] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 export interface QueueStats {

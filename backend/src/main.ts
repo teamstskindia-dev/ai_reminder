@@ -25,7 +25,18 @@ async function bootstrap(): Promise<void> {
   app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
-  app.use(json({ limit: config.jsonBodyLimit }));
+  // Webhook signatures are computed over the exact bytes received, so keep them for /webhooks/* only.
+  const webhookPrefix = `/${API_PREFIX}/webhooks/`;
+  app.use(
+    json({
+      limit: config.jsonBodyLimit,
+      verify: (req, _res, buf) => {
+        if ((req as { originalUrl?: string }).originalUrl?.startsWith(webhookPrefix)) {
+          (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+        }
+      },
+    }),
+  );
   app.use(urlencoded({ extended: false, limit: config.jsonBodyLimit }));
   app.use(expressErrorHandler);
   app.use(cookieParser());

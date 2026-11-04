@@ -125,6 +125,11 @@ export class MeetingsRepository {
     return row;
   }
 
+  /** Meeting handled by a provider bot (Recall.ai bot UUID). */
+  findByExternalBotId(externalBotId: string): Promise<MeetingRow | null> {
+    return this.prisma.meeting.findUnique({ where: { externalBotId } });
+  }
+
   findByCalendarEvent(userId: string, calendarEventId: string): Promise<MeetingRow | null> {
     return this.prisma.meeting.findUnique({ where: { userId_calendarEventId: { userId, calendarEventId } } });
   }

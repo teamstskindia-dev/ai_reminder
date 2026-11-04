@@ -3,6 +3,7 @@ import { CoreModule } from './core.module';
 import { RepeatableJobsService } from './infra/queue/repeatable-jobs.service';
 import { AiModule } from './modules/ai/ai.module';
 import { AiProcessor } from './modules/ai/ai.processor';
+import { BotEventsModule } from './modules/bot/recall/bot-events.module';
 import { CalendarSyncProcessor } from './modules/calendar/calendar-sync.processor';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { BroadcastDispatchService } from './modules/notifications/broadcast-dispatch.service';
@@ -13,9 +14,9 @@ import { ReminderDispatchService } from './modules/notifications/reminder-dispat
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { UsersModule } from './modules/users/users.module';
 
-/** Worker process: calendar-sync, ai-processing, notifications and digest processors + repeatable jobs. */
+/** Worker process: calendar-sync, bot-events, ai-processing, notifications and digest processors + repeatable jobs. */
 @Module({
-  imports: [CoreModule, UsersModule, CalendarModule, AiModule, NotificationsModule, RemindersModule],
+  imports: [CoreModule, UsersModule, CalendarModule, AiModule, NotificationsModule, RemindersModule, BotEventsModule],
   providers: [
     RepeatableJobsService,
     ReminderDispatchService,

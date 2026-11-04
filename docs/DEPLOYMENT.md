@@ -129,7 +129,25 @@ curl -s http://127.0.0.1:4000/api/v1/health        # {"status":"ok","version":"<
   Add new variables **before** merging code that needs them.
 - **Change the stack definition:** copy `backend/deploy/docker-compose.prod.yml` to `/opt/remi/docker-compose.yml`, then
   run `docker compose up -d`. Watchtower updates images, not the compose file.
-- **Meeting bot sign-in (one time).** Google Meet refuses signed-out automated guests ("You can't join this video
+- **Recall.ai meeting bots (recommended).** Google Meet refuses many self-hosted bots, so production can hand
+  joins to Recall.ai instead:
+  1. Create a Recall.ai workspace (pick the region once: `us-east-1`, `us-west-2`, `eu-central-1` or `ap-northeast-1`)
+     and an API key under **Developers → API Keys**.
+  2. In **Webhooks**, add the endpoint `https://api.leogix.io/api/v1/webhooks/recall` and subscribe it to every
+     `bot.*` event. Under **Developers → API Keys & Secrets**, create a workspace verification secret (`whsec_…`).
+  3. Add to `/opt/remi/.env.production` (and the git-ignored `backend/.env.production`):
+     ```sh
+     RECALL_API_KEY=<key>
+     RECALL_REGION=us-east-1
+     RECALL_WEBHOOK_SECRET=whsec_<secret>
+     ```
+     then `cd /opt/remi && docker compose up -d api worker bot`.
+  4. Admin → **Meeting bot → Provider**: choose **Recall.ai**, press **Test connection**, save. The next bot that
+     joins uses it; switch back to Self-hosted Chromium the same way.
+
+  Webhooks without a valid signature (or older than 5 minutes) get `401` and are logged as `recall webhook refused`.
+  Event processing shows up on **Admin → System → Queues → Bot events**.
+- **Meeting bot sign-in (self-hosted provider, one time).** Google Meet refuses signed-out automated guests ("You can't join this video
   call"), so the bot joins signed in to its **own** Google account, for example `remi.notetaker@gmail.com`. Name the
   account "Remi Notetaker"; meeting hosts see that name and admit it. The session lives in the `bot-profile` volume,
   which only `bot` and `bot-login` mount.

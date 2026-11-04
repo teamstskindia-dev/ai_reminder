@@ -2,10 +2,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
-import { AppException } from '../../common/errors/app.exception';
+import { AppException, causeChain } from '../../common/errors/app.exception';
 import { Paginated } from '../../common/pagination/pagination';
 import type { MeetingDetail, MeetingListItem, TranscriptSegment } from '../../common/types/api.types';
 import { isJoinableMeetUrl } from '../../common/validation/safe-url';
+import type { MeetingRow } from '../../infra/prisma/models';
+import { RecallClient } from '../../infra/recall/recall.client';
 import { removeJob, upsertJob } from '../../infra/queue/job-utils';
 import { AiProcessJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
@@ -28,6 +30,7 @@ export class MeetingsService {
     private readonly events: MeetingEventsService,
     private readonly scheduler: MeetingSchedulerService,
     private readonly storage: StorageService,
+    private readonly recall: RecallClient,
     @Inject(REDIS) private readonly redis: Redis,
     @InjectQueue(QUEUE.AI) private readonly aiQueue: Queue,
   ) {}
@@ -89,7 +92,14 @@ export class MeetingsService {
   async remove(userId: string, id: string): Promise<void> {
     const meeting = await this.meetings.findForUser(userId, id);
     if (LIVE_STATUSES.includes(meeting.status)) {
-      await this.redis.set(RedisKeys.botLeave(id), '1', 'EX', LEAVE_FLAG_TTL_SECONDS);
+      if (this.isRecallManaged(meeting)) {
+        // Deleting must not depend on Recall.ai being reachable; its bot leaves on its own timeouts otherwise.
+        await this.recall.leaveCall(meeting.externalBotId).catch((err: unknown) => {
+          this.logger.warn({ meetingId: id, causes: causeChain(err) }, 'could not ask the Recall.ai bot to leave');
+        });
+      } else {
+        await this.redis.set(RedisKeys.botLeave(id), '1', 'EX', LEAVE_FLAG_TTL_SECONDS);
+      }
     }
     await this.scheduler.unscheduleMeeting(meeting);
     await removeJob(this.aiQueue, JobId.ai(id));
@@ -115,7 +125,10 @@ export class MeetingsService {
 
   async leaveBot(userId: string, id: string): Promise<MeetingDetail> {
     const meeting = await this.meetings.findForUser(userId, id);
-    if (LIVE_STATUSES.includes(meeting.status)) {
+    if (LIVE_STATUSES.includes(meeting.status) && this.isRecallManaged(meeting)) {
+      // Recall.ai then reports call_ended → done; whatever was recorded is imported as usual.
+      await this.recall.leaveCall(meeting.externalBotId);
+    } else if (LIVE_STATUSES.includes(meeting.status)) {
       await this.redis.set(RedisKeys.botLeave(id), '1', 'EX', LEAVE_FLAG_TTL_SECONDS);
     } else if (meeting.status === 'scheduled') {
       await this.scheduler.unscheduleMeeting(meeting);
@@ -124,6 +137,10 @@ export class MeetingsService {
       throw AppException.conflict('The bot is not in this meeting');
     }
     return this.get(userId, id);
+  }
+
+  private isRecallManaged(meeting: MeetingRow): meeting is MeetingRow & { externalBotId: string } {
+    return meeting.botProvider === 'recall' && !!meeting.externalBotId;
   }
 
   async reprocess(userId: string, id: string): Promise<{ queued: true }> {

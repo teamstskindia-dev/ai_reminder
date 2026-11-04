@@ -73,8 +73,14 @@ $json$::jsonb),
   "enableEmbeddings": true
 }
 $json$::jsonb),
-('bot', false, 'Meeting bot behaviour and Google Meet DOM selectors (hot-fixable)', $json$
+('bot', false, 'Meeting bot provider, behaviour and Google Meet DOM selectors (hot-fixable)', $json$
 {
+  "provider": "self_hosted",
+  "recall": {
+    "transcription": "recallai_streaming",
+    "languageCode": "auto",
+    "deleteMediaAfterImport": true
+  },
   "botName": "Remi Notetaker",
   "joinBeforeMinutes": 1,
   "waitingRoomTimeoutMinutes": 10,

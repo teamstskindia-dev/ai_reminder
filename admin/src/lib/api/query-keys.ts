@@ -75,6 +75,10 @@ export const queryKeys = {
     all: ['audit-logs'] as const,
     list: (params: QueryParams) => ['audit-logs', 'list', params] as const,
   },
+  bot: {
+    all: ['bot'] as const,
+    providers: () => ['bot', 'providers'] as const,
+  },
   system: {
     all: ['system'] as const,
     queues: () => ['system', 'queues'] as const,

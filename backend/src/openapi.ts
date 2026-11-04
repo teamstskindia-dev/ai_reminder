@@ -41,10 +41,14 @@ const TAGS: [string, string][] = [
   ['notifications', 'In-app notification inbox.'],
   ['devices', 'Expo push token registration.'],
   ['assistant', 'Ask questions across meeting transcripts.'],
+  ['webhooks', 'Signed callbacks from providers (Recall.ai meeting bots). Not for clients.'],
   ['admin: auth', 'Admin panel sign-in (email + password).'],
   ['admin: users & meetings', 'Admin dashboard, users and meetings.'],
   ['admin: content', 'Settings, landing sections, pages, navigation, banners and plans.'],
-  ['admin: system', 'Media, AI prompts, notification templates, broadcasts, admins, audit log and queues.'],
+  [
+    'admin: system',
+    'Media, AI prompts, notification templates, broadcasts, admins, audit log, queues and bot providers.',
+  ],
 ];
 
 export function buildOpenApiConfig(): Omit<OpenAPIObject, 'paths'> {

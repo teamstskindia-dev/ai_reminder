@@ -68,6 +68,12 @@ const SEED: Record<SettingKey, unknown> = {
     enableEmbeddings: true,
   },
   bot: {
+    provider: 'self_hosted',
+    recall: {
+      transcription: 'recallai_streaming',
+      languageCode: 'auto',
+      deleteMediaAfterImport: true,
+    },
     botName: 'Remi Notetaker',
     joinBeforeMinutes: 1,
     waitingRoomTimeoutMinutes: 10,
@@ -253,6 +259,49 @@ describe('settings schemas', () => {
 
   it('public keys are the five client-visible settings', () => {
     expect([...PUBLIC_SETTING_KEYS].sort()).toEqual(['app', 'branding', 'features', 'seo', 'theme']);
+  });
+
+  describe('bot provider', () => {
+    const bot = SEED.bot as Record<string, unknown>;
+
+    it('fills provider and recall defaults into a value saved before providers existed', () => {
+      const legacy = { ...bot };
+      delete legacy.provider;
+      delete legacy.recall;
+      const result = validateSetting('bot', legacy);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value.provider).toBe('self_hosted');
+        expect(result.value.recall).toEqual({
+          transcription: 'recallai_streaming',
+          languageCode: 'auto',
+          deleteMediaAfterImport: true,
+        });
+      }
+    });
+
+    it('accepts recall with meeting captions and a fixed language', () => {
+      const result = validateSetting('bot', {
+        ...bot,
+        provider: 'recall',
+        recall: { transcription: 'meeting_captions', languageCode: 'en_us', deleteMediaAfterImport: false },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unknown provider, transcription or language code', () => {
+      expect(fieldsOf(validateSetting('bot', { ...bot, provider: 'zoom_sdk' }))).toEqual(['value.provider']);
+      const recall = bot.recall as Record<string, unknown>;
+      expect(fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, transcription: 'whisper' } }))).toEqual([
+        'value.recall.transcription',
+      ]);
+      expect(
+        fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, languageCode: 'english; drop' } })),
+      ).toEqual(['value.recall.languageCode']);
+      expect(fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, apiKey: 'x' } }))).toEqual([
+        'value.recall',
+      ]);
+    });
   });
 
   describe('ai.model rejects deprecated Gemini generations', () => {
