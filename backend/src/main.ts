@@ -3,7 +3,6 @@ loadDotEnv();
 
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
@@ -13,7 +12,7 @@ import { getAppConfig } from './config/config.module';
 import { expressErrorHandler } from './common/filters/all-exceptions.filter';
 import { installProcessHandlers } from './common/lifecycle/process-lifecycle';
 import { RedisIoAdapter } from './infra/realtime/redis-io.adapter';
-import { COOKIES } from './modules/auth/auth-cookies.service';
+import { API_PREFIX, setupSwagger } from './openapi';
 
 async function bootstrap(): Promise<void> {
   const config = getAppConfig();
@@ -38,32 +37,13 @@ async function bootstrap(): Promise<void> {
     exposedHeaders: ['X-Request-Id', 'ETag', 'Retry-After'],
     maxAge: 600,
   });
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
 
   const ioAdapter = new RedisIoAdapter(app, config.redisUrl, config.corsOrigins);
   ioAdapter.connect();
   app.useWebSocketAdapter(ioAdapter);
 
-  if (config.swaggerEnabled) {
-    const doc = new DocumentBuilder()
-      .setTitle('Remi API')
-      .setDescription(
-        'Remi backend API (contract: docs/API_CONTRACT.md). All responses use the { success, data } envelope.',
-      )
-      .setVersion('1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'admin-bearer')
-      .addCookieAuth(COOKIES.userAccess, { type: 'apiKey', in: 'cookie', name: COOKIES.userAccess }, COOKIES.userAccess)
-      .addCookieAuth(
-        COOKIES.adminAccess,
-        { type: 'apiKey', in: 'cookie', name: COOKIES.adminAccess },
-        COOKIES.adminAccess,
-      )
-      .build();
-    SwaggerModule.setup('docs', app, () => SwaggerModule.createDocument(app, doc), {
-      swaggerOptions: { persistAuthorization: false },
-    });
-  }
+  if (config.swaggerEnabled) setupSwagger(app);
 
   await app.listen(config.port, '0.0.0.0');
   logger.log(

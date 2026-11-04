@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/pagination/pagination';
-import { IsOptionalNonNull, IsOptionalNullable, ToBoolean } from '../../common/validation/validators';
+import { IsDateTime, IsOptionalNonNull, IsOptionalNullable, ToBoolean } from '../../common/validation/validators';
 
 export class ListActionItemsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ['open', 'done', 'dismissed', 'all'], default: 'open' })
@@ -9,11 +9,15 @@ export class ListActionItemsQueryDto extends PaginationQueryDto {
   @IsIn(['open', 'done', 'dismissed', 'all'])
   status: 'open' | 'done' | 'dismissed' | 'all' = 'open';
 
+  /** Only items from this meeting. */
   @IsOptional()
   @IsUUID()
   meetingId?: string;
 
-  @ApiPropertyOptional({ type: Boolean })
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: '`true` returns only items assigned to me; `false` or omitted returns all.',
+  })
   @IsOptional()
   @ToBoolean()
   @IsBoolean()
@@ -31,7 +35,7 @@ export class CreateActionItemDto {
   description?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   dueAt?: string | null;
 
   @ApiPropertyOptional({ enum: ['low', 'medium', 'high'] })
@@ -61,7 +65,7 @@ export class UpdateActionItemDto {
   description?: string | null;
 
   @IsOptionalNullable()
-  @IsISO8601()
+  @IsDateTime()
   dueAt?: string | null;
 
   @IsOptionalNonNull()

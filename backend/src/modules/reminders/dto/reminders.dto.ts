@@ -5,7 +5,6 @@ import {
   IsArray,
   IsIn,
   IsInt,
-  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
@@ -17,7 +16,8 @@ import {
 import { Type } from 'class-transformer';
 import { PaginationQueryDto } from '../../../common/pagination/pagination';
 import { REMINDER_CHANNELS, type ReminderChannel } from '../../../common/types/api.types';
-import { IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
+import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
+import { IsDateTime, IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
 
 export class ListRemindersQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ['pending', 'sent', 'cancelled', 'all'], default: 'pending' })
@@ -26,11 +26,11 @@ export class ListRemindersQueryDto extends PaginationQueryDto {
   status: 'pending' | 'sent' | 'cancelled' | 'all' = 'pending';
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateTime()
   from?: string;
 
   @IsOptional()
-  @IsISO8601()
+  @IsDateTime()
   to?: string;
 }
 
@@ -45,7 +45,7 @@ export class CreateReminderDto {
   body?: string | null;
 
   @ApiProperty({ description: 'Must be in the future' })
-  @IsISO8601()
+  @IsDateTime()
   remindAt: string;
 
   @ApiPropertyOptional({ enum: REMINDER_CHANNELS, isArray: true, default: ['push', 'in_app'] })
@@ -77,7 +77,7 @@ export class UpdateReminderDto {
   body?: string | null;
 
   @IsOptionalNonNull()
-  @IsISO8601()
+  @IsDateTime()
   remindAt?: string;
 
   @ApiPropertyOptional({ enum: REMINDER_CHANNELS, isArray: true })
@@ -95,6 +95,8 @@ export class UpdateReminderDto {
 }
 
 export class SnoozeReminderDto {
+  /** Remind again this many minutes from now. */
+  @ApiInteger()
   @Type(() => Number)
   @IsInt()
   @Min(5)

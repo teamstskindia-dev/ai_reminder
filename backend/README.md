@@ -100,6 +100,8 @@ Every variable is documented in [`.env.example`](./.env.example) and validated a
 | `npm run start:dev` / `start:dev:worker` / `start:dev:bot` | watch mode |
 | `npm run lint` / `lint:check` / `format` | ESLint (type-checked rules) + Prettier |
 | `npm test` | Jest unit tests |
+| `npm run openapi:check` | build the OpenAPI document (no DB/Redis/env needed) and fail on gaps; runs in CI after `build` |
+| `npm run openapi:generate` | same check, then write `../docs/openapi.json` (for Postman or client codegen) |
 | `npm run prisma:generate` | generate the client into `src/generated/prisma` |
 | `npm run prisma:migrate` | `prisma migrate deploy` |
 | `npm run prisma:migrate:dev` | `prisma migrate dev` (needs `SHADOW_DATABASE_URL`; see Prisma notes) |
@@ -114,6 +116,25 @@ npm run start:api      # http://localhost:4000/api/v1 , Swagger http://localhost
 npm run start:worker
 npm run start:bot      # BOT_MODE=simulate writes a sample transcript; BOT_MODE=puppeteer drives Chromium
 ```
+
+### API docs (Swagger)
+
+Swagger UI is at `/docs`, and the spec is at `/docs-json` and `/docs-yaml`. The spec is generated from the code
+(`src/openapi.ts`), so it can't drift from the routes:
+
+- **Requests**: DTOs in `*.dto.ts` files are read by the Swagger CLI plugin (types, `?` → optional, `| null` →
+  nullable, class-validator rules → min/max/length/pattern/enum, JSDoc → descriptions). A DTO outside a `*.dto.ts`
+  file shows up empty, and `openapi:check` fails. Use `@IsDateTime()` for timestamps (it validates and documents
+  `date-time`) and `@ApiInteger()` next to `@IsInt()`. Settings values and CMS section content are documented from
+  their zod schemas (`content.openapi.ts`).
+- **Responses**: each route declares `@ApiOperation({ summary })` and `@ApiDataResponse(Model)` /
+  `@ApiPaginatedResponse(Model)` (the `{ success, data, meta? }` envelope), or `@ApiNoContentResponse()`. Response
+  models live in `*.responses.dto.ts` and `implements` their type from `common/types/api.types.ts`, so a
+  contract change that isn't mirrored fails to compile.
+- **Errors** are added automatically (`common/swagger/openapi-finalize.ts`): 401 for `@UserAuth`/`@AdminAuth`,
+  403 and the minimum role for admin routes, 400 for routes with a body or query, 429, 503 unless
+  `@MaintenanceExempt`, and 500. Each comes with an example per error code. List anything else the handler can throw
+  with `@ApiErrors('NOT_FOUND', 'CONFLICT', …)` (once per handler).
 
 Local real-Meet testing needs Chrome/Chromium: set `CHROME_PATH` (macOS:
 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`) and `BOT_MODE=puppeteer`.

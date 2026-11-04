@@ -1,29 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
-import { IsIn, IsString, Length, Matches } from 'class-validator';
+import { ApiNoContentResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { AppException } from '../../common/errors/app.exception';
-import { IsOptionalNullable } from '../../common/validation/validators';
+import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
+import { Device, EXPO_TOKEN_RE, RegisterDeviceDto } from './devices.dto';
 import { DevicesRepository, toDevice } from './devices.repository';
-
-const EXPO_TOKEN_RE = /^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]{10,200}\]$/;
-
-export class RegisterDeviceDto {
-  @Matches(EXPO_TOKEN_RE, { message: 'expoPushToken must be an Expo push token' })
-  expoPushToken: string;
-
-  @IsIn(['android', 'ios'])
-  platform: 'android' | 'ios';
-
-  @IsOptionalNullable()
-  @IsString()
-  @Length(1, 120)
-  deviceName?: string | null;
-
-  @IsOptionalNullable()
-  @Matches(/^[0-9A-Za-z.+-]{1,32}$/, { message: 'appVersion must be a version string' })
-  appVersion?: string | null;
-}
 
 @ApiTags('devices')
 @UserAuth()
@@ -32,11 +13,18 @@ export class DevicesController {
   constructor(private readonly devices: DevicesRepository) {}
 
   @Get()
+  @ApiOperation({ summary: 'List devices registered for push notifications' })
+  @ApiDataResponse(Device, { isArray: true })
   async list(@CurrentUserId() userId: string) {
     return (await this.devices.listForUser(userId)).map(toDevice);
   }
 
   @Post()
+  @ApiOperation({
+    summary: 'Register (or refresh) this device for push notifications',
+    description: 'Idempotent: registering the same Expo push token again updates it and moves it to this user.',
+  })
+  @ApiDataResponse(Device, { status: 201 })
   async register(@CurrentUserId() userId: string, @Body() dto: RegisterDeviceDto) {
     return toDevice(
       await this.devices.upsert(userId, {
@@ -50,6 +38,10 @@ export class DevicesController {
 
   @Delete(':expoPushToken')
   @HttpCode(204)
+  @ApiOperation({ summary: 'Unregister a device (call on sign-out)' })
+  @ApiParam({ name: 'expoPushToken', schema: { type: 'string', pattern: EXPO_TOKEN_RE.source } })
+  @ApiNoContentResponse({ description: 'Unregistered.' })
+  @ApiErrors('BAD_REQUEST', 'NOT_FOUND')
   async remove(@CurrentUserId() userId: string, @Param('expoPushToken') token: string): Promise<void> {
     if (!EXPO_TOKEN_RE.test(token)) throw AppException.badRequest('Invalid push token');
     const removed = await this.devices.deleteForUser(userId, token);

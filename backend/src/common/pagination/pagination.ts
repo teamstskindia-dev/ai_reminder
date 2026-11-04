@@ -3,15 +3,19 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import type { PaginationMeta } from '../types/api.types';
 
+/** Highest page number accepted; keeps `OFFSET` (page × limit) bounded. */
+export const MAX_PAGE = 10_000;
+
 export class PaginationQueryDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @ApiPropertyOptional({ type: 'integer', default: 1, minimum: 1, maximum: MAX_PAGE })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(MAX_PAGE)
   page: number = 1;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({ type: 'integer', default: 20, minimum: 1, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
