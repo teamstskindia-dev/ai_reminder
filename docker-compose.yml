@@ -9,7 +9,7 @@
 #   docker compose up -d --build                 # postgres, redis, migrate, api, worker, bot
 #   docker compose up -d postgres redis          # only the databases, for `npm run start:dev` on the host
 #
-# Host ports (override with env): Postgres ${POSTGRES_PORT:-5433}, Redis ${REDIS_PORT:-6379}, API ${API_PORT:-4000}.
+# Host ports (override with env): Postgres ${POSTGRES_PORT:-5433}, Redis ${REDIS_PORT:-6380} (6380 avoids a Homebrew Redis on 6379), API ${API_PORT:-4000}.
 
 name: remi
 
@@ -56,7 +56,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
