@@ -28,6 +28,7 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:validate": "prisma validate",
+    "env:push": "bash deploy/push-env.sh",
     "db:seed": "prisma db execute --file ./prisma/seed.sql",
     "db:seed:if-empty": "node dist/scripts/seed-check.js; test $? -eq 2 && prisma db execute --file ./prisma/seed.sql || true"
   },
