@@ -125,8 +125,19 @@ docker compose logs --tail 50 watchtower           # update checks / pulls
 curl -s http://127.0.0.1:4000/api/v1/health        # {"status":"ok","version":"<sha>"}
 ```
 
-- **Change a secret:** edit `/opt/remi/.env.production`, then `docker compose up -d` (recreates api/worker/bot).
-  Add new variables **before** merging code that needs them.
+- **Add or change an app variable:** a deploy ships code only. CI never sees the app secrets, so a variable you add to
+  `backend/.env.production` on your machine does **not** reach production by itself. Push it:
+  ```bash
+  cd backend
+  npm run env:push -- --dry-run   # which variables differ from the server (names only, never values)
+  npm run env:push                # asks, uploads (keeps .env.production.bak-<time>), recreates api/worker/bot,
+                                  # waits until healthy, restores the backup if they are not
+  ```
+  (`backend/deploy/push-env.sh`; it only touches `/opt/remi/.env.production` and Remi's containers.) Push new
+  variables **before** merging code that needs them.
+- **Hostinger's Docker Manager → Environment box** shows `/opt/remi/.env`, which holds only compose settings
+  (`COMPOSE_PROFILES=edge`, `API_DOMAIN`). That is expected. App variables live in `/opt/remi/.env.production`, which
+  that screen does not show. Do not paste secrets into the Environment box, because the containers don't read it.
 - **Change the stack definition:** copy `backend/deploy/docker-compose.prod.yml` to `/opt/remi/docker-compose.yml`, then
   run `docker compose up -d`. Watchtower updates images, not the compose file.
 - **Recall.ai meeting bots (recommended).** Google Meet refuses many self-hosted bots, so production can hand
@@ -135,13 +146,14 @@ curl -s http://127.0.0.1:4000/api/v1/health        # {"status":"ok","version":"<
      and an API key under **Developers → API Keys**.
   2. In **Webhooks**, add the endpoint `https://api.leogix.io/api/v1/webhooks/recall` and subscribe it to every
      `bot.*` event. Under **Developers → API Keys & Secrets**, create a workspace verification secret (`whsec_…`).
-  3. Add to `/opt/remi/.env.production` (and the git-ignored `backend/.env.production`):
+  3. Add to the git-ignored `backend/.env.production`:
      ```sh
      RECALL_API_KEY=<key>
      RECALL_REGION=us-east-1
      RECALL_WEBHOOK_SECRET=whsec_<secret>
      ```
-     then `cd /opt/remi && docker compose up -d api worker bot`.
+     then `cd backend && npm run env:push`. This copies the file to `/opt/remi/.env.production` and restarts
+     api/worker/bot.
   4. Admin → **Meeting bot → Provider**: choose **Recall.ai**, press **Test connection**, save. The next bot that
      joins uses it; switch back to Self-hosted Chromium the same way.
 

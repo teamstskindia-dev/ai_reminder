@@ -6,7 +6,9 @@
 #   - the API itself listens on 127.0.0.1:4000 only.
 #
 #   /opt/remi/docker-compose.yml   this file (copy it there when it changes)
-#   /opt/remi/.env.production      application secrets (Supabase, JWT, Google, Gemini, …), chmod 600, never in git
+#   /opt/remi/.env.production      application secrets (Supabase, JWT, Google, Gemini, …), chmod 600, never in git.
+#                                  Not shipped by CI: push changes from backend/.env.production with `npm run env:push`.
+#   /opt/remi/.env                 compose settings only (COMPOSE_PROFILES, API_DOMAIN) — what Hostinger's UI shows
 #
 # Release: CI pushes ghcr.io/teamstskindia-dev/remi-backend:production → Watchtower pulls it within ~2 minutes and
 # restarts api/worker/bot one at a time; the api applies pending Prisma migrations on start (MIGRATE_ON_START).
