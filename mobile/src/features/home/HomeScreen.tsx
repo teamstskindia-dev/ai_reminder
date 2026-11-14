@@ -3,6 +3,7 @@ import { AlarmClock, Bell, CalendarPlus, ChartColumn, Clock, ListChecks, Plus, T
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { useDashboard } from '@/api/hooks/dashboard';
+import { useProfile } from '@/api/hooks/onboarding';
 import { useToggleAutoJoin } from '@/api/hooks/meetings';
 import { useUnreadCount } from '@/api/hooks/notifications';
 import type { MeetingListItem } from '@/api/types';
@@ -67,7 +68,9 @@ export function HomeScreen() {
   const refreshControl = useRefreshControl(() => Promise.all([dashboard.refetch(), unread.refetch()]));
 
   const data = dashboard.data;
-  const name = firstName(user?.name, user?.email);
+  const profile = useProfile();
+  // The name the user asked to be called in the get-to-know-you chat wins over the account name.
+  const name = profile.data?.preferredName || firstName(user?.name, user?.email);
   const banners = (data?.banners ?? config.banners.filter((b) => b.placement === 'mobile_home')).filter(
     (b) => !dismissed.has(b.id),
   );

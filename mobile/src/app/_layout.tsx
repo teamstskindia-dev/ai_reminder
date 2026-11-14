@@ -1,8 +1,8 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -61,13 +61,16 @@ function AppGate() {
   const config = useConfig();
   const auth = useAuth();
   const onboarding = useOnboarding();
-  const ready = config.ready && auth.status !== 'loading' && onboarding.ready;
+  const ready = config.ready && auth.status !== 'loading' && onboarding.ready && auth.userResolved;
+  // Latched: the splash only covers the first decision; later loading states render inside the navigator.
+  const [booted, setBooted] = useState(false);
+  if (ready && !booted) setBooted(true);
 
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => undefined);
-  }, [ready]);
+    if (booted) SplashScreen.hideAsync().catch(() => undefined);
+  }, [booted]);
 
-  if (!ready) return null;
+  if (!booted) return null;
   if (config.isMaintenance) return <MaintenanceScreen />;
   if (isVersionBelow(getAppVersion(), config.config.app.minAppVersion)) return <ForceUpdateScreen />;
   return <RootNavigator />;
@@ -76,15 +79,18 @@ function AppGate() {
 function RootNavigator() {
   const theme = useTheme();
   const { config, isEnabled } = useConfig();
-  const { status, settings } = useAuth();
+  const { status, settings, needsSetup, userResolved } = useAuth();
   const { seen: onboardingSeen } = useOnboarding();
   const signedIn = status === 'signedIn';
+  const inApp = signedIn && !needsSetup;
   const signedOutHome = onboardingSeen ? '/login' : '/onboarding';
   const homeRoute = useHomeRoute();
+  const signedInHome = needsSetup ? '/setup' : homeRoute;
 
   usePushRegistration({
-    // Waits for the user's settings so a user who turned push off is never prompted.
-    enabled: signedIn && config.features.pushNotifications && settings?.pushNotifications === true,
+    // Waits for the user's settings so a user who turned push off is never prompted, and for first-run
+    // setup, which asks for notification permission at the right moment.
+    enabled: inApp && userResolved && config.features.pushNotifications && settings?.pushNotifications === true,
     brandColor: theme.colors.primary,
   });
   useNotificationRouting({ signedIn, isEnabled });
@@ -107,7 +113,11 @@ function RootNavigator() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       >
-        <Stack.Protected guard={signedIn} redirectTo={signedOutHome}>
+        <Stack.Protected guard={signedIn && needsSetup} redirectTo={signedIn ? signedInHome : signedOutHome}>
+          <Stack.Screen name="setup" options={{ animation: 'fade', gestureEnabled: false }} />
+        </Stack.Protected>
+
+        <Stack.Protected guard={inApp} redirectTo={signedIn ? '/setup' : signedOutHome}>
           <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
           <Stack.Screen name="meeting/[id]" options={{ headerShown: true, title: '' }} />
           <Stack.Screen name="meeting/new" options={{ headerShown: true, title: 'Add meeting', ...MODAL }} />
@@ -121,12 +131,13 @@ function RootNavigator() {
           <Stack.Screen name="threads" options={{ headerShown: true, title: 'Conversations' }} />
         </Stack.Protected>
 
-        <Stack.Protected guard={!signedIn && !onboardingSeen} redirectTo={signedIn ? homeRoute : '/login'}>
+        <Stack.Protected guard={!signedIn && !onboardingSeen} redirectTo={signedIn ? signedInHome : '/login'}>
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
         </Stack.Protected>
 
-        <Stack.Protected guard={!signedIn && onboardingSeen} redirectTo={signedIn ? homeRoute : '/onboarding'}>
+        <Stack.Protected guard={!signedIn && onboardingSeen} redirectTo={signedIn ? signedInHome : '/onboarding'}>
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
+          <Stack.Screen name="email-sign-in" options={{ headerShown: true, title: '' }} />
         </Stack.Protected>
 
         <Stack.Screen name="index" />
@@ -134,6 +145,11 @@ function RootNavigator() {
         <Stack.Screen name="page/[slug]" options={{ headerShown: true, title: '' }} />
         <Stack.Screen name="+not-found" options={{ headerShown: true, title: 'Not found' }} />
       </Stack>
+      {signedIn && !userResolved ? (
+        <View style={[StyleSheet.absoluteFill, styles.loading, { backgroundColor: theme.colors.background }]}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      ) : null}
       <OfflineBanner />
     </>
   );
@@ -147,5 +163,9 @@ export function ErrorBoundary(props: ErrorBoundaryProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  loading: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

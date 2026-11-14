@@ -17,11 +17,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 type Slide = Section<OnboardingSlideContent>;
 
-function Dot({ index, scrollX, width, color }: { index: number; scrollX: Animated.Value; width: number; color: string }) {
-  const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
-  const scaleX = scrollX.interpolate({ inputRange, outputRange: [1, 3, 1], extrapolate: 'clamp' });
-  const opacity = scrollX.interpolate({ inputRange, outputRange: [0.3, 1, 0.3], extrapolate: 'clamp' });
-  return <Animated.View style={[styles.dot, { backgroundColor: color, opacity, transform: [{ scaleX }] }]} />;
+/** One equal-size dot per slide; only the current slide's dot is filled with the brand colour. */
+function Dot({ active, color, inactiveColor }: { active: boolean; color: string; inactiveColor: string }) {
+  return <View style={[styles.dot, { backgroundColor: active ? color : inactiveColor }]} />;
 }
 
 export function OnboardingScreen() {
@@ -31,7 +29,6 @@ export function OnboardingScreen() {
   const { markSeen } = useOnboarding();
   const query = useOnboardingSlides();
   const [index, setIndex] = useState(0);
-  const [scrollX] = useState(() => new Animated.Value(0));
   const listRef = useRef<FlatList<Slide>>(null);
 
   // Server slides when available; the bundled seed slides if the API is unreachable.
@@ -82,8 +79,6 @@ export function OnboardingScreen() {
         bounces={false}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onMomentumEnd}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-        scrollEventThrottle={16}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
         renderItem={({ item }) => (
           <View style={[styles.page, { width, backgroundColor: pageBg(item), paddingTop: insets.top + 72 }]}>
@@ -126,7 +121,7 @@ export function OnboardingScreen() {
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.dots} accessibilityLabel={`Slide ${index + 1} of ${slides.length}`}>
           {slides.map((s, i) => (
-            <Dot key={s.id} index={i} scrollX={scrollX} width={width} color={theme.colors.primary} />
+            <Dot key={s.id} active={i === index} color={theme.colors.primary} inactiveColor={theme.colors.borderStrong} />
           ))}
         </View>
         <Button
@@ -194,11 +189,11 @@ const styles = StyleSheet.create({
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 14,
+    gap: 10,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 });

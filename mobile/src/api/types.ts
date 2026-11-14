@@ -245,6 +245,47 @@ export interface UserSettings {
   digestHour: number;
   emailNotifications: boolean;
   pushNotifications: boolean;
+  /** Daily rhythm, local "HH:MM" (24h). */
+  wakeTime: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  checkinTime: string;
+  recordingConsentAt: ISODate | null;
+}
+
+/** PATCH /me/settings body: settings fields plus write-only flags. */
+export type UserSettingsPatch = Partial<Omit<UserSettings, 'recordingConsentAt'>> & {
+  recordingConsentAcknowledged?: true;
+};
+
+// ---------- Companion profile and onboarding ----------
+export type ProfileStatus = 'pending' | 'completed' | 'skipped';
+export type LanguageStyle = 'english' | 'hinglish' | 'mixed';
+
+export interface UserProfile {
+  status: ProfileStatus;
+  preferredName: string | null;
+  occupation: string | null;
+  currentFocus: string | null;
+  communicationStyle: string | null;
+  languageStyle: LanguageStyle;
+  tone: string | null;
+  facts: string[];
+  summary: string | null;
+  updatedAt: ISODate | null;
+}
+
+export interface OnboardingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OnboardingChatReply {
+  reply: string;
+  step: number;
+  totalSteps: number;
+  done: boolean;
+  languageStyle: LanguageStyle;
 }
 
 export interface AuthTokens {
@@ -486,6 +527,7 @@ export type NotificationType =
   | 'reminder'
   | 'daily_digest'
   | 'bot_failed'
+  | 'welcome'
   | 'broadcast';
 
 export interface NotificationData {

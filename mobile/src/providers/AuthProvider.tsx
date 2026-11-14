@@ -3,9 +3,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { sessionExpiredEvents } from '@/api/events';
 import { qk } from '@/api/queryKeys';
-import { fetchAuthMe, logout, updateMe } from '@/api/resources/auth';
+import { appleSignIn, fetchAuthMe, logout, updateMe, verifyEmailSignIn } from '@/api/resources/auth';
+import { completeOnboarding } from '@/api/resources/onboarding';
 import { clearTokens, getRefreshToken, loadTokens, setTokens } from '@/api/tokens';
-import type { AuthMe, User, UserSettings } from '@/api/types';
+import type { AuthMe, ExchangeResult, User, UserSettings } from '@/api/types';
 import { cancelPendingSignIn, exchangeWithPkce } from '@/features/auth/google';
 import { forgetPushToken, unregisterPushToken } from '@/features/push/registration';
 import { reportError } from '@/utils/logger';
@@ -18,8 +19,18 @@ interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   settings: UserSettings | null;
+  /** True once the signed-in user has loaded (or failed to load) — gates the first navigation. */
+  userResolved: boolean;
+  /** Signed in but first-run setup (user-flow §02) is not finished yet. */
+  needsSetup: boolean;
   /** Exchanges a one-time OAuth code for tokens (safe to call twice with the same code). */
   completeSignIn: (code: string) => Promise<{ isNewUser: boolean }>;
+  /** Verifies an emailed 6-digit code and signs in. */
+  completeEmailSignIn: (email: string, code: string) => Promise<{ isNewUser: boolean }>;
+  /** Signs in with an Apple identity token (iOS). */
+  completeAppleSignIn: (input: { identityToken: string; givenName?: string; familyName?: string }) => Promise<{ isNewUser: boolean }>;
+  /** Finishes first-run setup (stamps onboardedAt, sends the welcome email). */
+  finishSetup: () => Promise<void>;
   /** Signs out. `localOnly` skips server calls (e.g. after the account was deleted). */
   signOut: (options?: { localOnly?: boolean }) => Promise<void>;
 }
@@ -63,18 +74,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   // Once per signed-in user: fill in the device timezone if the account has none (or the UTC default),
-  // so digests and reminders use local time, and record that onboarding happened.
+  // so the daily rhythm, digests and reminders use local time. Onboarding is finished by the setup flow.
   const profileSyncedFor = useRef<string | null>(null);
   const meUser = me.data?.user;
   useEffect(() => {
     if (!meUser || profileSyncedFor.current === meUser.id) return;
     profileSyncedFor.current = meUser.id;
-    const patch: { timezone?: string; onboarded?: true } = {};
     const tz = deviceTimezone();
-    if (tz && tz !== meUser.timezone && (!meUser.timezone || meUser.timezone === 'UTC')) patch.timezone = tz;
-    if (!meUser.onboardedAt) patch.onboarded = true;
-    if (!Object.keys(patch).length) return;
-    updateMe(patch)
+    if (!tz || tz === meUser.timezone || (meUser.timezone && meUser.timezone !== 'UTC')) return;
+    updateMe({ timezone: tz })
       .then((user) => queryClient.setQueryData<AuthMe>(qk.me, (prev) => (prev ? { ...prev, user } : prev)))
       .catch(() => undefined);
   }, [meUser, queryClient]);
@@ -99,9 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [resetLocalSession],
   );
 
-  const completeSignIn = useCallback(
-    async (code: string) => {
-      const result = await exchangeWithPkce(code);
+  /** Stores a fresh session (Google exchange or email code) and seeds the cached user. */
+  const applySession = useCallback(
+    async (result: ExchangeResult) => {
       // A second delivery of the same code resolves to the same tokens; storing them again is harmless.
       const previousRefresh = statusRef.current === 'signedIn' ? await getRefreshToken() : null;
       await setTokens(result.tokens);
@@ -119,6 +127,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyStatus, queryClient],
   );
 
+  const completeSignIn = useCallback(async (code: string) => applySession(await exchangeWithPkce(code)), [applySession]);
+
+  const completeEmailSignIn = useCallback(
+    async (email: string, code: string) => applySession(await verifyEmailSignIn(email, code)),
+    [applySession],
+  );
+
+  const completeAppleSignIn = useCallback(
+    async (input: { identityToken: string; givenName?: string; familyName?: string }) => applySession(await appleSignIn(input)),
+    [applySession],
+  );
+
+  const finishSetup = useCallback(async () => {
+    const user = await completeOnboarding();
+    queryClient.setQueryData<AuthMe>(qk.me, (prev) => (prev ? { ...prev, user } : prev));
+    void queryClient.invalidateQueries({ queryKey: qk.notifications.all });
+  }, [queryClient]);
+
   const signOut = useCallback(
     async (options?: { localOnly?: boolean }) => {
       if (options?.localOnly) {
@@ -133,15 +159,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [resetLocalSession],
   );
 
+  const user = me.data?.user ?? null;
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
-      user: me.data?.user ?? null,
+      user,
       settings: me.data?.settings ?? null,
+      // Offline with no cached user: don't block the app on setup; it shows once the user loads.
+      userResolved: status !== 'signedIn' || user !== null || me.isError || me.isPaused,
+      needsSetup: status === 'signedIn' && user !== null && !user.onboardedAt,
       completeSignIn,
+      completeEmailSignIn,
+      completeAppleSignIn,
+      finishSetup,
       signOut,
     }),
-    [status, me.data, completeSignIn, signOut],
+    [status, user, me.data?.settings, me.isError, me.isPaused, completeSignIn, completeEmailSignIn, completeAppleSignIn, finishSetup, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -257,13 +257,13 @@ $json$::jsonb);
 -- -----------------------------------------------------------------------------
 insert into public.content_sections (page, type, name, platform, sort_order, content) values
 ('mobile_onboarding', 'onboarding_slide', 'Slide 1', 'mobile', 0, $json$
-{ "title": "Meetings, remembered", "description": "Remi joins your Google Meet calls and writes the notes for you.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/cld-sample-4.jpg", "backgroundColor": "#EEF0FF" }
+{ "title": "Your friend who remembers everything", "description": "Talk, type or record. I keep the important bits so you don't have to.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/cld-sample-4.jpg", "backgroundColor": "#EEF0FF" }
 $json$::jsonb),
 ('mobile_onboarding', 'onboarding_slide', 'Slide 2', 'mobile', 1, $json$
-{ "title": "Every promise tracked", "description": "Action items and commitments are captured automatically with due dates.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/kitchen-bar.jpg", "backgroundColor": "#E8FBF6" }
+{ "title": "Never drop a promise", "description": "I pull reminders and to-dos out of your conversations, meetings and chats.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/kitchen-bar.jpg", "backgroundColor": "#E8FBF6" }
 $json$::jsonb),
 ('mobile_onboarding', 'onboarding_slide', 'Slide 3', 'mobile', 2, $json$
-{ "title": "Reminded at the right time", "description": "Get a nudge before meetings start and before anything is due.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/jazz.jpg", "backgroundColor": "#FFF4E8" }
+{ "title": "Gets you, a little more every day", "description": "English, Hinglish or a mix: I learn your style and grow with you. You stay in control.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/jazz.jpg", "backgroundColor": "#FFF4E8" }
 $json$::jsonb);
 
 -- -----------------------------------------------------------------------------

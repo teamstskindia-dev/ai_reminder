@@ -197,6 +197,44 @@ export interface UserSettings {
   digestHour: number;
   emailNotifications: boolean;
   pushNotifications: boolean;
+  /** Daily rhythm, local "HH:MM" in the user's time zone. */
+  wakeTime: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  checkinTime: string;
+  /** When the user acknowledged the one-time "let people know when you record" note. */
+  recordingConsentAt: ISODate | null;
+}
+
+// ---------- Companion profile and onboarding ----------
+export type ProfileStatus = 'pending' | 'completed' | 'skipped';
+export type LanguageStyle = 'english' | 'hinglish' | 'mixed';
+
+export interface UserProfile {
+  status: ProfileStatus;
+  preferredName: string | null;
+  occupation: string | null;
+  currentFocus: string | null;
+  communicationStyle: string | null;
+  languageStyle: LanguageStyle;
+  tone: string | null;
+  facts: string[];
+  summary: string | null;
+  updatedAt: ISODate | null;
+}
+
+export interface OnboardingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OnboardingChatReply {
+  reply: string;
+  /** 0-based index of the question the reply asks; equals `totalSteps` once the chat is complete. */
+  step: number;
+  totalSteps: number;
+  done: boolean;
+  languageStyle: LanguageStyle;
 }
 
 export interface AuthTokens {
@@ -342,7 +380,14 @@ export interface Reminder {
 
 // ---------- Notifications ----------
 export type NotificationType =
-  'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder' | 'daily_digest' | 'bot_failed' | 'broadcast';
+  | 'meeting_upcoming'
+  | 'report_ready'
+  | 'action_item_due'
+  | 'reminder'
+  | 'daily_digest'
+  | 'bot_failed'
+  | 'broadcast'
+  | 'welcome';
 
 export interface AppNotification {
   id: string;

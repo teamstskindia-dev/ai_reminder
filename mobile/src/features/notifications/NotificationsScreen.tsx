@@ -8,6 +8,7 @@ import {
   ListChecks,
   Megaphone,
   Newspaper,
+  PartyPopper,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -40,6 +41,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   daily_digest: Newspaper,
   bot_failed: TriangleAlert,
   broadcast: Megaphone,
+  welcome: PartyPopper,
 };
 
 const NotificationRow = memo(function NotificationRow({

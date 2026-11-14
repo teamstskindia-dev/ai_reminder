@@ -41,6 +41,8 @@ import { MeetingsController } from './modules/meetings/meetings.controller';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { NotificationsController } from './modules/notifications/notifications.controller';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OnboardingController, ProfileController } from './modules/onboarding/onboarding.controller';
+import { OnboardingService } from './modules/onboarding/onboarding.service';
 import { RealtimeGateway } from './modules/notifications/realtime.gateway';
 import { PublicController } from './modules/public/public.controller';
 import { RemindersController } from './modules/reminders/reminders.controller';
@@ -94,6 +96,8 @@ class StorageBootstrap implements OnApplicationBootstrap {
     PublicController,
     AuthController,
     MeController,
+    ProfileController,
+    OnboardingController,
     IntegrationsController,
     DashboardController,
     AnalyticsController,
@@ -114,6 +118,7 @@ class StorageBootstrap implements OnApplicationBootstrap {
     DashboardService,
     AnalyticsService,
     AssistantService,
+    OnboardingService,
     RealtimeGateway,
     StorageBootstrap,
     // Global guards run in this order: maintenance → auth → rate limit.

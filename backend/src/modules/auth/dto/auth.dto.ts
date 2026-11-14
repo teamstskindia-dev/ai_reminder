@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class GoogleAuthQueryDto {
   @ApiPropertyOptional({ enum: ['web', 'mobile'], default: 'web' })
@@ -37,4 +37,38 @@ export class RefreshTokenDto {
   @IsString()
   @MaxLength(200)
   refreshToken?: string;
+}
+
+export class EmailStartDto {
+  @ApiProperty({ example: 'asha@example.com' })
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  @MaxLength(254)
+  email: string;
+}
+
+export class EmailVerifyDto extends EmailStartDto {
+  @ApiProperty({ example: '042317', description: 'The 6-digit code from the email' })
+  @Matches(/^\d{6}$/, { message: 'The code has 6 digits' })
+  code: string;
+}
+
+export class AppleSignInDto {
+  /** The `identityToken` from Sign in with Apple on iOS. */
+  @IsString()
+  @MinLength(20)
+  @MaxLength(8192)
+  identityToken: string;
+
+  /** Apple shares the name only on the first sign-in. */
+  @ApiPropertyOptional({ example: 'Asha' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  givenName?: string;
+
+  @ApiPropertyOptional({ example: 'Rao' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  familyName?: string;
 }

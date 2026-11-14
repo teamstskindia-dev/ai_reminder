@@ -59,6 +59,10 @@ export class AppConfig {
     return Buffer.from(this.env.ENCRYPTION_KEY, 'base64');
   }
 
+  get apple() {
+    return { clientIds: this.env.APPLE_CLIENT_IDS };
+  }
+
   get google() {
     return {
       clientId: this.env.GOOGLE_CLIENT_ID,

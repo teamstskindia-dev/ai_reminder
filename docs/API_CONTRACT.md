@@ -269,6 +269,35 @@ interface UserSettings {
   digestHour: number;                   // 0..23 in user's timezone
   emailNotifications: boolean;
   pushNotifications: boolean;
+  wakeTime: string;                     // "HH:MM" (24h, user's timezone): morning brief
+  quietHoursStart: string;              // "HH:MM"
+  quietHoursEnd: string;                // "HH:MM"
+  checkinTime: string;                  // "HH:MM": evening check-in
+  recordingConsentAt: ISODate | null;   // when the one-time "let people know you record" note was acknowledged
+}
+
+// The companion's personality profile, built by the first-run get-to-know-you chat.
+interface UserProfile {
+  status: 'pending' | 'completed' | 'skipped';
+  preferredName: string | null;
+  occupation: string | null;
+  currentFocus: string | null;
+  communicationStyle: string | null;    // e.g. "casual and funny"
+  languageStyle: 'english' | 'hinglish' | 'mixed';
+  tone: string | null;                  // e.g. "playful"
+  facts: string[];
+  summary: string | null;
+  updatedAt: ISODate | null;
+}
+
+interface OnboardingChatMessage { role: 'user' | 'assistant'; content: string }  // content 1..1000 chars
+
+interface OnboardingChatReply {
+  reply: string;
+  step: number;                         // 0-based question index; equals totalSteps when done
+  totalSteps: number;                   // 4
+  done: boolean;
+  languageStyle: 'english' | 'hinglish' | 'mixed';
 }
 
 interface AuthTokens {
@@ -394,7 +423,7 @@ interface Reminder {
 // ---------- Notifications ----------
 type NotificationType =
   | 'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder'
-  | 'daily_digest' | 'bot_failed' | 'broadcast';
+  | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome';
 
 interface AppNotification {
   id: string;
@@ -524,6 +553,9 @@ alone is not enough on mobile. The app generates a random `codeVerifier` (32 ran
 `codeChallenge = base64url(sha256(codeVerifier))` to `/auth/google`, keeps the verifier in memory, and sends it with
 `/auth/exchange`. The API carries the challenge inside the signed `state`, stores it with the one-time code (Redis, 60 s,
 single use) and verifies it at exchange. A failed verification consumes the code, and the API logs it as a security event.
+| POST | `/auth/apple` | `{ identityToken: string; givenName?: string; familyName?: string }` (iOS Sign in with Apple; Apple sends the name only the first time) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. The token is verified against Apple's keys (issuer, audience in `APPLE_CLIENT_IDS`, expiry). Links to an existing account by Apple id, or by email when Apple marks it verified. |
+| POST | `/auth/email/start` | `{ email: string }` | `204`. Emails a 6-digit code (10 min, single use, max 5 per address per hour). Without SMTP outside production the code is printed in the API log. `429 RATE_LIMITED` when too many codes were requested. |
+| POST | `/auth/email/verify` | `{ email: string; code: string }` (6 digits) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. Creates the account on first sign-in (unless sign-ups are paused → `403`). 5 wrong attempts invalidate the code (`401`). |
 | POST | `/auth/refresh` | `{ refreshToken?: string }` (mobile sends body; web relies on the `remi_rt` cookie) | `{ tokens: AuthTokens }` (+ rotated cookies) |
 | POST | `/auth/logout` | `{ refreshToken?: string }` | `204`; revokes the session and clears cookies |
 | GET | `/auth/me` | — | `{ user: User; settings: UserSettings }` |
@@ -540,10 +572,25 @@ After the first web login, the website redirects to `/analytics/reports?action=w
 | Method | Path | Body | Response `data` |
 |--------|------|------|-----------------|
 | GET | `/me` | — | `User` |
-| PATCH | `/me` | `{ name?: string; timezone?: string; locale?: string; onboarded?: true }` | `User` |
+| PATCH | `/me` | `{ name?: string; timezone?: string; locale?: string; onboarded?: true }` (mobile uses `POST /onboarding/complete` instead of `onboarded`) | `User` |
 | DELETE | `/me` | — | `204` (deletes account and all data, revokes Google token) |
 | GET | `/me/settings` | — | `UserSettings` |
-| PATCH | `/me/settings` | `Partial<UserSettings>` | `UserSettings` |
+| PATCH | `/me/settings` | `Partial<UserSettings>` without `recordingConsentAt`, plus `recordingConsentAcknowledged?: true` (stamps `recordingConsentAt` once). Times are `"HH:MM"` 24h. | `UserSettings` |
+| GET | `/me/profile` | — | `UserProfile` (`status: 'pending'` with empty fields until the chat runs) |
+| DELETE | `/me/profile` | — | `204` (forgets the personality profile) |
+
+### Onboarding (first run)
+
+The mobile app runs these after sign-in while `user.onboardedAt` is `null` (connect Calendar → get-to-know-you chat →
+mic → notifications → daily rhythm → recording note → first nudge). Every AI step has a scripted fallback, so
+onboarding never blocks on the AI.
+
+| Method | Path | Body | Response `data` |
+|--------|------|------|-----------------|
+| POST | `/onboarding/chat` | `{ messages: OnboardingChatMessage[] }` (max 12; empty → opening message) | `OnboardingChatReply`. Four questions (name, what you do, what's on your mind, how to talk to you); replies mirror English/Hinglish. 30/min per user. |
+| POST | `/onboarding/profile` | `{ messages: OnboardingChatMessage[] }` | `UserProfile` (no user answers → `status: 'skipped'`). 5/min per user. |
+| POST | `/onboarding/transcribe` | multipart `file` (audio, ≤ 15 MB) | `{ text: string }` (Hindi words in Latin script; empty when no speech). Audio is not stored. 10/min per user. |
+| POST | `/onboarding/complete` | — | `User` with `onboardedAt` set (idempotent). Marks an unfinished profile `skipped` and sends the `welcome` notification (email + in-app) the first time. |
 
 ### Integrations
 

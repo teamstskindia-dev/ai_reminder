@@ -111,6 +111,8 @@ export const envSchema = z
     GOOGLE_REDIRECT_URI: z.url().default('http://localhost:4000/api/v1/auth/google/callback'),
     /** Default: remi:// + exp:// (Expo Go) in development, remi:// only in production. */
     MOBILE_REDIRECT_ALLOWLIST: list([]),
+    /** Sign in with Apple audiences: the iOS bundle id (and a Services ID if the website adds Apple later). */
+    APPLE_CLIENT_IDS: list(['com.remi.app']),
 
     GEMINI_API_KEY: optionalString,
     AI_MOCK: bool(false),
