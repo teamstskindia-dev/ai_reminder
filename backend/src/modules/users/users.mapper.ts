@@ -34,6 +34,11 @@ export function toUserSettings(row: UserSettingsRow): UserSettings {
     digestHour: row.digestHour,
     emailNotifications: row.emailNotifications,
     pushNotifications: row.pushNotifications,
+    wakeTime: row.wakeTime,
+    quietHoursStart: row.quietHoursStart,
+    quietHoursEnd: row.quietHoursEnd,
+    checkinTime: row.checkinTime,
+    recordingConsentAt: row.recordingConsentAt?.toISOString() ?? null,
   };
 }
 

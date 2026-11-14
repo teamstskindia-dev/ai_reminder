@@ -19,6 +19,9 @@ export function redisOptionsFromUrl(url: string): RedisOptions {
 export const RedisKeys = {
   otc: (code: string) => `otc:${code}`,
   googlePkce: (nonce: string) => `oauth-pkce:${nonce}`,
+  /** Keyed by sha256(email) so addresses never appear in key names. */
+  emailCode: (emailHash: string) => `email-code:${emailHash}`,
+  emailCodeRate: (emailHash: string) => `email-code-rate:${emailHash}`,
   loginFail: (kind: 'ip' | 'email', id: string) => `login-fail:${kind}:${id}`,
   loginLock: (kind: 'ip' | 'email', id: string) => `login-lock:${kind}:${id}`,
   botLeave: (meetingId: string) => `bot-leave:${meetingId}`,

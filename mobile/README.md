@@ -64,6 +64,34 @@ to the app (`remi://auth/callback?code=…`, or `exp://…/--/auth/callback?code
   (then point `EXPO_PUBLIC_API_URL` at the tunnel too).
 - The backend must allow the app's redirect schemes in `MOBILE_REDIRECT_ALLOWLIST` (`remi://`, `exp://`).
 
+### Sign-in options
+
+Google (all platforms), email code (all platforms) and Sign in with Apple (iOS only, see Builds below).
+
+### Email sign-in
+
+"Continue with email" sends a 6-digit code (`POST /auth/email/start`, then `/auth/email/verify`). Without SMTP settings
+on the backend (development), the code is printed in the API log instead of being emailed.
+
+## First-run setup (user-flow §02)
+
+After sign-in, while `user.onboardedAt` is `null`, the app shows `/setup` instead of the tabs (`src/features/setup/`):
+
+1. **Connect your day** (Google sign-ins only): Google Calendar now or later; Gmail is shown as coming soon.
+2. **Get-to-know-you chat**: four warm questions, answered by text or voice (mic button → `expo-audio` →
+   `POST /onboarding/transcribe`). Replies mirror English, Hinglish or a mix, and the rest of setup follows that style.
+   The answers become the first personality profile (`POST /onboarding/profile`); skipping leaves it empty.
+3. **Microphone** and 4. **Notifications** permissions, each skippable with a graceful fallback (push off → in-app
+   plus an optional email digest). Push registration waits until this step, so the OS prompt never appears earlier.
+5. **Daily rhythm**: wake time, quiet hours, evening check-in (`PATCH /me/settings`).
+6. **Recording note** (one time) and 7. **First nudge**, then `POST /onboarding/complete` stamps `onboardedAt`, sends the
+   welcome email and the guards land the user on Today.
+
+Progress is saved per user in AsyncStorage, so closing the app mid-setup resumes at the same step. Profile shows
+"What I know about you" (deletable) and the daily rhythm afterwards.
+
+The microphone is now used (`expo-audio` plugin in `app.config.ts`), so voice answers need a development build.
+
 ## Builds (EAS)
 
 The repo uses Continuous Native Generation — no committed `ios/` or `android/` folders. Native configuration lives in
@@ -82,8 +110,12 @@ npx eas-cli@latest build --profile development --platform ios        # or androi
 npx eas-cli@latest build --profile production --platform all
 ```
 
-**Release consideration (iOS):** App Store Review Guideline 4.8 may require offering **Sign in with Apple** when an app
-offers Google sign-in. It is not implemented — decide before submitting to the App Store.
+**Sign in with Apple (iOS):** the login screen shows the native Apple button on iOS (`expo-apple-authentication`,
+`ios.usesAppleSignIn`), which App Store Review Guideline 4.8 requires alongside Google sign-in. The app sends Apple's
+identity token to `POST /auth/apple`; the backend accepts audiences from `APPLE_CLIENT_IDS` (default `com.remi.app`).
+It needs an Apple Developer account with the Sign in with Apple capability on the bundle id, and can only be tested on
+iOS. Before release, account deletion should also revoke the Apple token (Apple's REST `revoke` endpoint), which is
+not implemented yet.
 
 ## Push notifications
 

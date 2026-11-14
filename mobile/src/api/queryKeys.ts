@@ -8,6 +8,7 @@ import type {
 /** Query-key factory. Prefix keys (e.g. `qk.meetings.all`) invalidate every query below them. */
 export const qk = {
   me: ['me'] as const,
+  profile: ['me', 'profile'] as const,
   dashboard: ['dashboard'] as const,
   analytics: (range: AnalyticsRange) => ['analytics', range] as const,
   integrations: ['integrations'] as const,

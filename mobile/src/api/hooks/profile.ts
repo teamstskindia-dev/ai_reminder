@@ -3,17 +3,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '../queryKeys';
 import { deleteAccount, updateSettings } from '../resources/auth';
 import { disconnectGoogleCalendar, listIntegrations, syncGoogleCalendar } from '../resources/integrations';
-import type { AuthMe, UserSettings } from '../types';
+import type { AuthMe, UserSettings, UserSettingsPatch } from '../types';
 
 /** PATCH /me/settings with an optimistic update of the cached `/auth/me` settings. */
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<UserSettings>) => updateSettings(patch),
-    onMutate: async (patch) => {
+    mutationFn: (patch: UserSettingsPatch) => updateSettings(patch),
+    onMutate: async ({ recordingConsentAcknowledged, ...patch }) => {
       await qc.cancelQueries({ queryKey: qk.me });
       const previous = qc.getQueryData<AuthMe>(qk.me);
-      if (previous) qc.setQueryData<AuthMe>(qk.me, { ...previous, settings: { ...previous.settings, ...patch } });
+      const optimistic: Partial<UserSettings> = { ...patch };
+      if (recordingConsentAcknowledged && previous && !previous.settings.recordingConsentAt) {
+        optimistic.recordingConsentAt = new Date().toISOString();
+      }
+      if (previous) qc.setQueryData<AuthMe>(qk.me, { ...previous, settings: { ...previous.settings, ...optimistic } });
       return previous;
     },
     onError: (_error, _patch, previous) => {

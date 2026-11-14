@@ -44,6 +44,11 @@ export class UsersService {
     if (dto.digestHour !== undefined) data.digestHour = dto.digestHour;
     if (dto.emailNotifications !== undefined) data.emailNotifications = dto.emailNotifications;
     if (dto.pushNotifications !== undefined) data.pushNotifications = dto.pushNotifications;
+    if (dto.wakeTime !== undefined) data.wakeTime = dto.wakeTime;
+    if (dto.quietHoursStart !== undefined) data.quietHoursStart = dto.quietHoursStart;
+    if (dto.quietHoursEnd !== undefined) data.quietHoursEnd = dto.quietHoursEnd;
+    if (dto.checkinTime !== undefined) data.checkinTime = dto.checkinTime;
+    if (dto.recordingConsentAcknowledged && !before.recordingConsentAt) data.recordingConsentAt = new Date();
     const after = Object.keys(data).length ? await this.users.updateSettings(userId, data) : before;
     const reschedule =
       after.autoJoin !== before.autoJoin || after.meetingReminderMinutes !== before.meetingReminderMinutes;

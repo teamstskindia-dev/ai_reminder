@@ -3,6 +3,9 @@ import { IsBoolean, IsIn, IsInt, IsString, Length, Matches, Max, Min } from 'cla
 import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
 import { IsOptionalNonNull, IsOptionalNullable, IsTimeZone } from '../../../common/validation/validators';
 
+/** 24h local time, e.g. 07:30. */
+export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export class UpdateMeDto {
   @ApiPropertyOptional({ example: 'Asha Rao' })
   @IsOptionalNonNull()
@@ -65,4 +68,32 @@ export class UpdateUserSettingsDto {
   @IsOptionalNonNull()
   @IsBoolean()
   pushNotifications?: boolean;
+
+  /** Local wake time, "HH:MM" (24h). The morning brief and daily digest follow it. */
+  @ApiPropertyOptional({ example: '07:30', pattern: HHMM.source })
+  @IsOptionalNonNull()
+  @Matches(HHMM, { message: 'wakeTime must be "HH:MM" (24h)' })
+  wakeTime?: string;
+
+  @ApiPropertyOptional({ example: '22:30', pattern: HHMM.source })
+  @IsOptionalNonNull()
+  @Matches(HHMM, { message: 'quietHoursStart must be "HH:MM" (24h)' })
+  quietHoursStart?: string;
+
+  @ApiPropertyOptional({ example: '07:00', pattern: HHMM.source })
+  @IsOptionalNonNull()
+  @Matches(HHMM, { message: 'quietHoursEnd must be "HH:MM" (24h)' })
+  quietHoursEnd?: string;
+
+  /** Local time of the evening check-in, "HH:MM" (24h). */
+  @ApiPropertyOptional({ example: '21:00', pattern: HHMM.source })
+  @IsOptionalNonNull()
+  @Matches(HHMM, { message: 'checkinTime must be "HH:MM" (24h)' })
+  checkinTime?: string;
+
+  /** `true` records that the user saw the one-time "let people know when you record" note. */
+  @ApiPropertyOptional({ enum: [true] })
+  @IsOptionalNonNull()
+  @IsIn([true], { message: 'recordingConsentAcknowledged can only be set to true' })
+  recordingConsentAcknowledged?: true;
 }

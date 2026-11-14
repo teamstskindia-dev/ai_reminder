@@ -11,7 +11,8 @@ export type SecurityEvent =
   | 'admin_login_locked'
   | 'admin_sessions_revoked'
   | 'user_sessions_revoked'
-  | 'google_grant_revoked';
+  | 'google_grant_revoked'
+  | 'email_code_failed';
 
 /** Security events are logged at `warn` with a `security` tag so they can be alerted on. */
 export function securityLog(event: SecurityEvent, fields: Record<string, unknown> = {}): void {

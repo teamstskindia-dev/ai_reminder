@@ -57,6 +57,7 @@ model User {
   name        String?
   avatarUrl   String?   @map("avatar_url")
   googleSub   String?   @unique @map("google_sub")
+  appleSub    String?   @unique @map("apple_sub")
   timezone    String    @default("UTC")
   locale      String    @default("en")
   status      String    @default("active")
@@ -68,6 +69,7 @@ model User {
 
   plan              Plan?              @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   settings          UserSettings?
+  profile           UserProfile?
   googleAccount     GoogleAccount?
   meetings          Meeting[]
   meetingReports    MeetingReport[]
@@ -84,19 +86,45 @@ model User {
 }
 
 model UserSettings {
-  userId                 String   @id @map("user_id") @db.Uuid
-  autoJoin               String   @default("all") @map("auto_join")
-  botName                String?  @map("bot_name")
-  meetingReminderMinutes Int      @default(10) @map("meeting_reminder_minutes")
-  dailyDigest            Boolean  @default(true) @map("daily_digest")
-  digestHour             Int      @default(8) @map("digest_hour")
-  emailNotifications     Boolean  @default(true) @map("email_notifications")
-  pushNotifications      Boolean  @default(true) @map("push_notifications")
-  updatedAt              DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  userId                 String    @id @map("user_id") @db.Uuid
+  autoJoin               String    @default("all") @map("auto_join")
+  botName                String?   @map("bot_name")
+  meetingReminderMinutes Int       @default(10) @map("meeting_reminder_minutes")
+  dailyDigest            Boolean   @default(true) @map("daily_digest")
+  digestHour             Int       @default(8) @map("digest_hour")
+  emailNotifications     Boolean   @default(true) @map("email_notifications")
+  pushNotifications      Boolean   @default(true) @map("push_notifications")
+  /// Daily rhythm, local "HH:MM" in the user's time zone.
+  wakeTime               String    @default("07:30") @map("wake_time")
+  quietHoursStart        String    @default("22:30") @map("quiet_hours_start")
+  quietHoursEnd          String    @default("07:00") @map("quiet_hours_end")
+  checkinTime            String    @default("21:00") @map("checkin_time")
+  recordingConsentAt     DateTime? @map("recording_consent_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("user_settings")
+}
+
+/// What the companion knows about the user's personality and style (built by the get-to-know-you chat).
+model UserProfile {
+  userId             String   @id @map("user_id") @db.Uuid
+  status             String   @default("pending")
+  preferredName      String?  @map("preferred_name")
+  occupation         String?
+  currentFocus       String?  @map("current_focus")
+  communicationStyle String?  @map("communication_style")
+  languageStyle      String   @default("english") @map("language_style")
+  tone               String?
+  facts              Json     @default("[]")
+  summary            String?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("user_profiles")
 }
 
 model GoogleAccount {

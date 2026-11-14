@@ -4,6 +4,8 @@ import type { ClientContext } from '../../common/http/request.types';
 import type { AuthTokens, User, UserSettings } from '../../common/types/api.types';
 import { toUser, toUserSettings } from '../users/users.mapper';
 import { UsersRepository } from '../users/users.repository';
+import { AppleAuthService } from './apple-auth.service';
+import { EmailAuthService } from './email-auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { RefreshSessionService } from './refresh-session.service';
 import { TokenService } from './token.service';
@@ -15,6 +17,8 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly sessions: RefreshSessionService,
     private readonly googleAuth: GoogleAuthService,
+    private readonly emailAuth: EmailAuthService,
+    private readonly appleAuth: AppleAuthService,
     private readonly users: UsersRepository,
   ) {}
 
@@ -29,6 +33,30 @@ export class AuthService {
     if (row.status === 'suspended') throw AppException.forbidden('Your account is suspended');
     const tokens = await this.issue(userId, ctx);
     return { user: toUser(row), tokens, isNewUser, platform };
+  }
+
+  /** Passwordless email sign-in: verifies the 6-digit code and issues a session. */
+  async emailSignIn(
+    email: string,
+    code: string,
+    ctx: ClientContext,
+  ): Promise<{ user: User; tokens: AuthTokens; isNewUser: boolean }> {
+    const { userId, isNewUser } = await this.emailAuth.verify(email, code);
+    const row = await this.users.getById(userId);
+    const tokens = await this.issue(userId, ctx);
+    return { user: toUser(row), tokens, isNewUser };
+  }
+
+  /** Sign in with Apple (iOS): verifies Apple's identity token and issues a session. */
+  async appleSignIn(
+    identityToken: string,
+    fullName: { givenName?: string; familyName?: string },
+    ctx: ClientContext,
+  ): Promise<{ user: User; tokens: AuthTokens; isNewUser: boolean }> {
+    const { userId, isNewUser } = await this.appleAuth.signIn(identityToken, fullName);
+    const row = await this.users.getById(userId);
+    const tokens = await this.issue(userId, ctx);
+    return { user: toUser(row), tokens, isNewUser };
   }
 
   async refresh(refreshToken: string | undefined, ctx: ClientContext): Promise<AuthTokens> {

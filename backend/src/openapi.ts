@@ -30,8 +30,9 @@ httpOnly cookies set by the API. Admin routes need an admin token and the role s
 const TAGS: [string, string][] = [
   ['health', 'Liveness and readiness probes (no envelope).'],
   ['public', 'Public config and CMS content for the website and the app. No auth.'],
-  ['auth', 'Google sign-in (PKCE for mobile), token refresh and logout.'],
-  ['me', 'The signed-in user profile, settings and account deletion.'],
+  ['auth', 'Google sign-in (PKCE for mobile), Sign in with Apple, email sign-in codes, token refresh and logout.'],
+  ['me', 'The signed-in user profile, settings, personality profile and account deletion.'],
+  ['onboarding', 'First-run get-to-know-you chat, voice answers, the first personality profile and finishing setup.'],
   ['integrations', 'Google Calendar connection and sync.'],
   ['dashboard', 'Home screen aggregate.'],
   ['analytics', 'Meeting analytics for a date range.'],

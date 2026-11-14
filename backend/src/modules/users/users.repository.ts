@@ -24,6 +24,10 @@ export class UsersRepository {
     return this.prisma.user.findUnique({ where: { googleSub } });
   }
 
+  findByAppleSub(appleSub: string): Promise<UserRow | null> {
+    return this.prisma.user.findUnique({ where: { appleSub } });
+  }
+
   /** Case-insensitive (matches the `lower(email)` unique index). */
   findByEmail(email: string): Promise<UserRow | null> {
     return this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });

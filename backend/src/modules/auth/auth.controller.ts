@@ -10,7 +10,15 @@ import { MeResult, SignInResult, TokensResult } from '../users/dto/users.respons
 import { AuthCookiesService } from './auth-cookies.service';
 import { CurrentUserId, UserAuth } from './auth.decorators';
 import { AuthService } from './auth.service';
-import { ExchangeCodeDto, GoogleAuthQueryDto, RefreshTokenDto } from './dto/auth.dto';
+import {
+  AppleSignInDto,
+  EmailStartDto,
+  EmailVerifyDto,
+  ExchangeCodeDto,
+  GoogleAuthQueryDto,
+  RefreshTokenDto,
+} from './dto/auth.dto';
+import { EmailAuthService } from './email-auth.service';
 import { GoogleAuthService } from './google-auth.service';
 
 @ApiTags('auth')
@@ -21,6 +29,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly googleAuth: GoogleAuthService,
+    private readonly emailAuth: EmailAuthService,
     private readonly cookies: AuthCookiesService,
   ) {}
 
@@ -65,6 +74,54 @@ export class AuthController {
     const { platform, ...result } = await this.auth.exchange(dto.code, dto.codeVerifier, clientContext(req));
     if (platform === 'web') this.cookies.set(res, 'user', result.tokens);
     return result;
+  }
+
+  @Post('email/start')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Email sign-in, step 1: send a 6-digit code',
+    description:
+      'Emails a code valid for 10 minutes (at most 5 codes per address per hour). Works for new and existing ' +
+      'accounts. In development without SMTP the code is printed in the API log.',
+  })
+  @ApiNoContentResponse({ description: 'Code sent.' })
+  @ApiErrors('RATE_LIMITED', 'UPSTREAM_ERROR')
+  async emailStart(@Body() dto: EmailStartDto): Promise<void> {
+    await this.emailAuth.start(dto.email);
+  }
+
+  @Post('email/verify')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Email sign-in, step 2: verify the code',
+    description:
+      'Returns tokens like `POST /auth/exchange`. Creates the account on first sign-in (unless sign-ups are ' +
+      'paused). A code is single use; 5 wrong attempts invalidate it.',
+  })
+  @ApiDataResponse(SignInResult)
+  @ApiErrors('UNAUTHORIZED', 'FORBIDDEN')
+  async emailVerify(@Body() dto: EmailVerifyDto, @Req() req: AppRequest) {
+    return this.auth.emailSignIn(dto.email, dto.code, clientContext(req));
+  }
+
+  @Post('apple')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Sign in with Apple (iOS)',
+    description:
+      'Send the `identityToken` from Sign in with Apple (and the name, which Apple shares only the first time). ' +
+      'The token is verified against the Apple signing keys; its audience must be in APPLE_CLIENT_IDS. Returns tokens like ' +
+      '`POST /auth/exchange` and creates the account on first sign-in (unless sign-ups are paused).',
+  })
+  @ApiDataResponse(SignInResult)
+  @ApiErrors('BAD_REQUEST', 'UNAUTHORIZED', 'FORBIDDEN', 'UPSTREAM_ERROR')
+  async apple(@Body() dto: AppleSignInDto, @Req() req: AppRequest) {
+    return this.auth.appleSignIn(
+      dto.identityToken,
+      { givenName: dto.givenName, familyName: dto.familyName },
+      clientContext(req),
+    );
   }
 
   @Post('refresh')

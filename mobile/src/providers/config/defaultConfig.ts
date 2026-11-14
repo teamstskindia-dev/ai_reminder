@@ -92,8 +92,8 @@ export const DEFAULT_ONBOARDING: Section<OnboardingSlideContent>[] = [
     type: 'onboarding_slide',
     sortOrder: 0,
     content: {
-      title: 'Meetings, remembered',
-      description: 'Remi joins your Google Meet calls and writes the notes for you.',
+      title: 'Your friend who remembers everything',
+      description: "Talk, type or record. I keep the important bits so you don't have to.",
       imageUrl: 'https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/cld-sample-4.jpg',
       backgroundColor: '#EEF0FF',
     },
@@ -104,8 +104,8 @@ export const DEFAULT_ONBOARDING: Section<OnboardingSlideContent>[] = [
     type: 'onboarding_slide',
     sortOrder: 1,
     content: {
-      title: 'Every promise tracked',
-      description: 'Action items and commitments are captured automatically with due dates.',
+      title: 'Never drop a promise',
+      description: 'I pull reminders and to-dos out of your conversations, meetings and chats.',
       imageUrl: 'https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/kitchen-bar.jpg',
       backgroundColor: '#E8FBF6',
     },
@@ -116,8 +116,8 @@ export const DEFAULT_ONBOARDING: Section<OnboardingSlideContent>[] = [
     type: 'onboarding_slide',
     sortOrder: 2,
     content: {
-      title: 'Reminded at the right time',
-      description: 'Get a nudge before meetings start and before anything is due.',
+      title: 'Gets you, a little more every day',
+      description: 'English, Hinglish or a mix: I learn your style and grow with you. You stay in control.',
       imageUrl: 'https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/jazz.jpg',
       backgroundColor: '#FFF4E8',
     },
