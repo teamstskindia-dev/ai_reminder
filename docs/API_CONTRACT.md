@@ -58,8 +58,9 @@ type ErrorCode =
 
 Status codes: `BAD_REQUEST` and `VALIDATION_ERROR` 400 · `UNAUTHORIZED` and `TOKEN_EXPIRED` 401 · `FORBIDDEN` and
 `PLAN_LIMIT_REACHED` 403 · `NOT_FOUND` 404 · `CONFLICT` 409 · `PAYLOAD_TOO_LARGE` 413 · `UNSUPPORTED_MEDIA_TYPE` 415 ·
-`RATE_LIMITED` 429 · `INTERNAL_ERROR` 500 · `UPSTREAM_ERROR` 502 (Google, Gemini, Cloudinary or another dependency
-failed; safe to retry) · `MAINTENANCE` 503.
+`RATE_LIMITED` 429 · `INTERNAL_ERROR` 500 · `UPSTREAM_ERROR` 503 (Google, Gemini, Cloudinary or another dependency
+failed; safe to retry; not 502, because Cloudflare replaces origin 502/504 responses with its own CORS-less page) ·
+`MAINTENANCE` 503. Clients distinguish the two 503s by `error.code`.
 
 Resources that exist but belong to another user return `404 NOT_FOUND`, never 403, so IDs cannot be enumerated.
 Clients show `message` to the user, and show `requestId` as a "Reference" on unexpected errors (5xx) so support can
@@ -268,6 +269,38 @@ interface UserSettings {
   digestHour: number;                   // 0..23 in user's timezone
   emailNotifications: boolean;
   pushNotifications: boolean;
+  wakeTime: string;                     // "HH:MM" (24h, user's timezone): morning brief
+  quietHoursStart: string;              // "HH:MM"
+  quietHoursEnd: string;                // "HH:MM"
+  checkinTime: string;                  // "HH:MM": evening check-in
+  recordingConsentAt: ISODate | null;   // when the one-time "let people know you record" note was acknowledged
+  morningBrief: boolean;                // push the morning brief at wakeTime
+  eveningCheckin: boolean;              // ask "how did today go?" at checkinTime
+}
+
+// The companion's personality profile, built by the first-run get-to-know-you chat.
+interface UserProfile {
+  status: 'pending' | 'completed' | 'skipped';
+  preferredName: string | null;
+  occupation: string | null;
+  currentFocus: string | null;
+  communicationStyle: string | null;    // e.g. "casual and funny"
+  languageStyle: 'english' | 'hinglish' | 'mixed';
+  tone: string | null;                  // e.g. "playful"
+  facts: string[];
+  summary: string | null;
+  relationshipStage: number;            // 1 polite and curious, 2 casual, 3 close friend (grows nightly)
+  updatedAt: ISODate | null;
+}
+
+interface OnboardingChatMessage { role: 'user' | 'assistant'; content: string }  // content 1..1000 chars
+
+interface OnboardingChatReply {
+  reply: string;
+  step: number;                         // 0-based question index; equals totalSteps when done
+  totalSteps: number;                   // 4
+  done: boolean;
+  languageStyle: 'english' | 'hinglish' | 'mixed';
 }
 
 interface AuthTokens {
@@ -381,19 +414,21 @@ interface Reminder {
   body: string | null;
   remindAt: ISODate;
   channels: ReminderChannel[];
-  status: 'pending' | 'sent' | 'cancelled' | 'failed';
+  status: 'pending' | 'sent' | 'done' | 'cancelled' | 'failed';
   source: 'ai' | 'manual' | 'system';
   meetingId: string | null;
   meetingTitle: string | null;
   actionItemId: string | null;
   sentAt: ISODate | null;
+  doneAt: ISODate | null;               // when the user tapped Done
   createdAt: ISODate;
 }
 
 // ---------- Notifications ----------
 type NotificationType =
   | 'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder'
-  | 'daily_digest' | 'bot_failed' | 'broadcast';
+  | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome'
+  | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap';
 
 interface AppNotification {
   id: string;
@@ -402,6 +437,60 @@ interface AppNotification {
   body: string | null;
   data: { meetingId?: string; actionItemId?: string; reminderId?: string; url?: string; [k: string]: unknown };
   readAt: ISODate | null;
+  createdAt: ISODate;
+}
+
+// ---------- Daily rhythm (user-flow §03) ----------
+interface CompanionMessage { role: 'user' | 'assistant'; content: string; at: ISODate }
+
+interface DailyCheckin {
+  id: string;
+  date: string;                         // local YYYY-MM-DD
+  status: 'prompted' | 'replied' | 'completed' | 'missed';
+  tone: 'normal' | 'light';             // light after a missed check-in (no guilt)
+  messages: CompanionMessage[];
+  mood: number | null;                  // 1..5, set at wrap-up
+  energy: number | null;                // 1..5
+  wins: string[];
+  summary: string | null;
+  completedAt: ISODate | null;
+}
+
+interface CheckinReply { checkin: DailyCheckin; reply: string; done: boolean }  // done: wrapped up with tomorrow's plan
+
+interface CompanionNudge {
+  id: string;
+  text: string;
+  status: 'scheduled' | 'sent' | 'dismissed' | 'cancelled';
+  sentAt: ISODate | null;
+  messages: CompanionMessage[];
+}
+
+interface NudgeReply { nudge: CompanionNudge; reply: string }
+
+interface TodayBrief {
+  date: string;                         // local YYYY-MM-DD
+  languageStyle: 'english' | 'hinglish' | 'mixed';
+  greeting: string;                     // "Good morning, Asha"
+  headline: string;                     // "3 meetings today (first at 10:00 AM), 2 reminders and 4 open to-dos."
+  counts: { meetings: number; reminders: number; openItems: number };
+  meetings: MeetingListItem[];          // today's (local day)
+  reminders: Reminder[];                // today's, pending or sent and not done
+  openItems: ActionItem[];              // open to-dos and promises, soonest due first (max 5)
+  checkin: { time: string; status: 'off' | 'upcoming' | 'due' | DailyCheckin['status']; mood: number | null };
+  nudge: CompanionNudge | null;         // today's nudge once sent, until dismissed
+}
+
+interface MoodPoint { date: string; mood: number | null; energy: number | null }
+
+interface WeeklyRecap {
+  weekStart: string;                    // Monday, YYYY-MM-DD
+  weekEnd: string;                      // Sunday
+  headline: string;
+  meetings: { count: number; hours: number; highlights: { id: string; title: string; startAt: ISODate }[] };
+  promises: { kept: number; remindersDone: number; stillOpen: number };
+  mood: { days: MoodPoint[]; average: number | null; trend: 'up' | 'down' | 'flat' | null; checkins: number };
+  people: string[];
   createdAt: ISODate;
 }
 
@@ -523,6 +612,9 @@ alone is not enough on mobile. The app generates a random `codeVerifier` (32 ran
 `codeChallenge = base64url(sha256(codeVerifier))` to `/auth/google`, keeps the verifier in memory, and sends it with
 `/auth/exchange`. The API carries the challenge inside the signed `state`, stores it with the one-time code (Redis, 60 s,
 single use) and verifies it at exchange. A failed verification consumes the code, and the API logs it as a security event.
+| POST | `/auth/apple` | `{ identityToken: string; givenName?: string; familyName?: string }` (iOS Sign in with Apple; Apple sends the name only the first time) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. The token is verified against Apple's keys (issuer, audience in `APPLE_CLIENT_IDS`, expiry). Links to an existing account by Apple id, or by email when Apple marks it verified. |
+| POST | `/auth/email/start` | `{ email: string }` | `204`. Emails a 6-digit code (10 min, single use, max 5 per address per hour). Without SMTP outside production the code is printed in the API log. `429 RATE_LIMITED` when too many codes were requested. |
+| POST | `/auth/email/verify` | `{ email: string; code: string }` (6 digits) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. Creates the account on first sign-in (unless sign-ups are paused → `403`). 5 wrong attempts invalidate the code (`401`). |
 | POST | `/auth/refresh` | `{ refreshToken?: string }` (mobile sends body; web relies on the `remi_rt` cookie) | `{ tokens: AuthTokens }` (+ rotated cookies) |
 | POST | `/auth/logout` | `{ refreshToken?: string }` | `204`; revokes the session and clears cookies |
 | GET | `/auth/me` | — | `{ user: User; settings: UserSettings }` |
@@ -539,10 +631,25 @@ After the first web login, the website redirects to `/analytics/reports?action=w
 | Method | Path | Body | Response `data` |
 |--------|------|------|-----------------|
 | GET | `/me` | — | `User` |
-| PATCH | `/me` | `{ name?: string; timezone?: string; locale?: string; onboarded?: true }` | `User` |
+| PATCH | `/me` | `{ name?: string; timezone?: string; locale?: string; onboarded?: true }` (mobile uses `POST /onboarding/complete` instead of `onboarded`) | `User` |
 | DELETE | `/me` | — | `204` (deletes account and all data, revokes Google token) |
 | GET | `/me/settings` | — | `UserSettings` |
-| PATCH | `/me/settings` | `Partial<UserSettings>` | `UserSettings` |
+| PATCH | `/me/settings` | `Partial<UserSettings>` without `recordingConsentAt`, plus `recordingConsentAcknowledged?: true` (stamps `recordingConsentAt` once). Times are `"HH:MM"` 24h. | `UserSettings` |
+| GET | `/me/profile` | — | `UserProfile` (`status: 'pending'` with empty fields until the chat runs) |
+| DELETE | `/me/profile` | — | `204` (forgets the personality profile) |
+
+### Onboarding (first run)
+
+The mobile app runs these after sign-in while `user.onboardedAt` is `null` (connect Calendar → get-to-know-you chat →
+mic → notifications → daily rhythm → recording note → first nudge). Every AI step has a scripted fallback, so
+onboarding never blocks on the AI.
+
+| Method | Path | Body | Response `data` |
+|--------|------|------|-----------------|
+| POST | `/onboarding/chat` | `{ messages: OnboardingChatMessage[] }` (max 12; empty → opening message) | `OnboardingChatReply`. Four questions (name, what you do, what's on your mind, how to talk to you); replies mirror English/Hinglish. 30/min per user. |
+| POST | `/onboarding/profile` | `{ messages: OnboardingChatMessage[] }` | `UserProfile` (no user answers → `status: 'skipped'`). 5/min per user. |
+| POST | `/onboarding/transcribe` | multipart `file` (audio, ≤ 15 MB) | `{ text: string }` (Hindi words in Latin script; empty when no speech). Audio is not stored. 10/min per user. |
+| POST | `/onboarding/complete` | — | `User` with `onboardedAt` set (idempotent). Marks an unfinished profile `skipped` and sends the `welcome` notification (email + in-app) the first time. |
 
 ### Integrations
 
@@ -589,11 +696,31 @@ To reconnect, the client restarts the `/auth/google` flow.
 
 | Method | Path | Query / Body | Response `data` |
 |--------|------|--------------|-----------------|
-| GET | `/reminders` | `status=pending\|sent\|cancelled\|all` (default `pending`), `from?`, `to?`, `page`, `limit` | `Reminder[]` + `meta` (sorted by `remindAt` asc) |
+| GET | `/reminders` | `status=pending\|sent\|done\|cancelled\|all` (default `pending`), `from?`, `to?`, `page`, `limit` | `Reminder[]` + `meta` (sorted by `remindAt` asc) |
+| GET | `/reminders/:id` | — | `Reminder` |
 | POST | `/reminders` | `{ title; body?; remindAt; channels?: ReminderChannel[]; meetingId?; actionItemId? }` (`remindAt` must be in the future) | `Reminder` |
 | PATCH | `/reminders/:id` | `{ title?; body?; remindAt?; channels?; status?: 'cancelled' }` | `Reminder` |
 | DELETE | `/reminders/:id` | — | `204` |
 | POST | `/reminders/:id/snooze` | `{ minutes: number }` (5..1440) | `Reminder` |
+| POST | `/reminders/:id/done` | — (stops it, no follow-up; marks a linked action item done; idempotent) | `Reminder` |
+
+A fired reminder that is neither done nor snoozed gets **one** gentle follow-up push (`reminder_followup`) 2 hours later, unless that falls in quiet hours. Reminder pushes carry `categoryId: "reminder"`; the app registers that category with **Done / Snooze 15 min / In 1 hour** buttons.
+
+### Today and daily rhythm
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/today` | — | `TodayBrief` |
+| GET | `/checkins/today` | — (starts today's check-in with the friend's opening message on first call) | `DailyCheckin` |
+| POST | `/checkins/today/reply` | `{ text: string }` (1..1000; 20/min). The third reply wraps up automatically | `CheckinReply` |
+| POST | `/checkins/today/finish` | — (needs at least one reply) | `CheckinReply` |
+| GET | `/checkins/mood` | `days=7..90` (default 30) | `MoodPoint[]` (oldest first) |
+| GET | `/nudges/:id` | — | `CompanionNudge` |
+| POST | `/nudges/:id/reply` | `{ text: string }` | `NudgeReply` |
+| POST | `/nudges/:id/dismiss` | — | `204` |
+| GET | `/recaps` | `limit=1..12` (default 4) | `WeeklyRecap[]` (newest first) |
+
+The worker runs a 5-minute tick (`companion` queue) and, in each user's time zone: sends the **morning brief** at `wakeTime` (push + in-app, opens Today), the **evening check-in** at `checkinTime` (opens `/checkin`; lighter wording after a missed one), **night learning** at 03:00 (marks an unanswered check-in missed, updates warmth and `relationshipStage`, refreshes the profile summary, and may plan at most one **proactive nudge** for the day, never in quiet hours or within an hour of the check-in), and the **weekly recap** on Sunday at 18:00 (email + in-app, opens `/recap`). The daily digest is now email-only.
 
 ### Notifications
 
@@ -681,7 +808,7 @@ interface AdminDashboardStats {
 }
 
 interface QueueStats {
-  name: 'calendar-sync' | 'meeting-bot' | 'ai-processing' | 'notifications' | 'digest';
+  name: 'calendar-sync' | 'meeting-bot' | 'bot-events' | 'ai-processing' | 'notifications' | 'digest';
   waiting: number; active: number; delayed: number; failed: number; completed: number; paused: boolean;
 }
 
@@ -704,7 +831,7 @@ interface SettingValue {
   app: AppMeta;
   seo: Seo;
   ai: {
-    model: string;                 // e.g. "gemini-2.5-flash"
+    model: string;                 // e.g. "gemini-3.5-flash" (1.x/2.x models are rejected as deprecated)
     embeddingModel: string;        // e.g. "gemini-embedding-001"
     temperature: number;           // 0..2
     maxOutputTokens: number;
@@ -712,6 +839,12 @@ interface SettingValue {
     enableEmbeddings: boolean;
   };
   bot: {
+    provider: 'self_hosted' | 'recall';  // who joins: Chromium runner (bot container) or Recall.ai
+    recall: {
+      transcription: 'recallai_streaming' | 'meeting_captions';  // Recall.ai STT (paid) or Meet captions (free)
+      languageCode: string;              // "auto" or a code like en, en_us, de
+      deleteMediaAfterImport: boolean;   // delete recording/transcript on Recall.ai once imported
+    };
     botName: string;
     joinBeforeMinutes: number;
     waitingRoomTimeoutMinutes: number;
@@ -825,6 +958,22 @@ interface AuditLog {
 | GET | `/admin/system/queues/:name/failed` | admin | `page`, `limit` | `FailedJob[]` + meta |
 | POST | `/admin/system/queues/:name/retry-failed` | admin | — | `{ retried: number }` |
 | POST | `/admin/system/cache/flush` | admin | — | `{ flushed: number }` |
+| GET | `/admin/bot/providers` | viewer | — | `BotProviderStatus` |
+| POST | `/admin/bot/recall/test` | admin | — | `{ ok: boolean; message: string }` |
+
+```ts
+// Secrets are never returned, only whether they are set on the server.
+interface BotProviderStatus {
+  recall: { apiKeyConfigured: boolean; webhookSecretConfigured: boolean; region: string; webhookUrl: string; dashboardUrl: string };
+  selfHosted: { mode: 'puppeteer' | 'simulate'; persistentProfile: boolean };
+}
+```
+
+**Provider webhooks** (called by Recall.ai, not by clients; not wrapped in the envelope):
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| POST | `/webhooks/recall` | `webhook-id` / `webhook-timestamp` / `webhook-signature` (HMAC-SHA256 with `RECALL_WEBHOOK_SECRET`, ±5 min) | `{ received: true }` · `401` when unsigned, tampered or stale |
 
 ---
 

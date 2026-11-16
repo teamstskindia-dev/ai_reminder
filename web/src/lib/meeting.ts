@@ -58,4 +58,6 @@ export function scoreTone(score: number | null | undefined): "good" | "ok" | "po
   return "poor";
 }
 
-export const MEET_URL_PATTERN = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}\/?(\?.*)?$/i;
+/** Google Meet links, including the newer `/meet/abc-defg-hij` form used by instant meetings (the API stores the
+ *  canonical `https://meet.google.com/abc-defg-hij`). */
+export const MEET_URL_PATTERN = /^https:\/\/meet\.google\.com\/(?:meet\/)?[a-z]{3}-[a-z]{4}-[a-z]{3}\/?(\?.*)?$/i;

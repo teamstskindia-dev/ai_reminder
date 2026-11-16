@@ -16,7 +16,10 @@ export interface CalendarEventLike {
 }
 
 const PATTERNS: { platform: MeetingPlatform; re: RegExp }[] = [
-  { platform: 'google_meet', re: /https?:\/\/meet\.google\.com\/[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}(?:\?[^\s<>"')]*)?/i },
+  {
+    platform: 'google_meet',
+    re: /https?:\/\/meet\.google\.com\/(?:meet\/)?[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}(?:\?[^\s<>"')]*)?/i,
+  },
   { platform: 'google_meet', re: /https?:\/\/meet\.google\.com\/lookup\/[\w-]+(?:\?[^\s<>"')]*)?/i },
   { platform: 'zoom', re: /https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|my|w|s)\/[^\s<>"')]+/i },
   { platform: 'zoom', re: /https?:\/\/(?:[\w-]+\.)?zoomgov\.com\/j\/[^\s<>"')]+/i },
@@ -24,7 +27,7 @@ const PATTERNS: { platform: MeetingPlatform; re: RegExp }[] = [
   { platform: 'teams', re: /https?:\/\/teams\.live\.com\/meet\/[^\s<>"')]+/i },
 ];
 
-export const MEET_URL_RE = /^https:\/\/meet\.google\.com\/[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}(?:[/?#].*)?$/i;
+export const MEET_URL_RE = /^https:\/\/meet\.google\.com\/(?:meet\/)?[a-z]{3,4}-[a-z]{4}-[a-z]{3,4}(?:[/?#].*)?$/i;
 
 export function platformForUrl(url: string): MeetingPlatform {
   for (const p of PATTERNS) if (p.re.test(url)) return p.platform;

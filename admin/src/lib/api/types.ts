@@ -486,6 +486,7 @@ export type AdminMeetingDetail = MeetingDetail & { user: MeetingUserRef };
 export const QUEUE_NAMES = [
   'calendar-sync',
   'meeting-bot',
+  'bot-events',
   'ai-processing',
   'notifications',
   'digest',
@@ -537,7 +538,18 @@ export interface AiSettings {
   enableEmbeddings: boolean;
 }
 
+export type BotProvider = 'self_hosted' | 'recall';
+export type RecallTranscription = 'recallai_streaming' | 'meeting_captions';
+
+export interface RecallBotSettings {
+  transcription: RecallTranscription;
+  languageCode: string;
+  deleteMediaAfterImport: boolean;
+}
+
 export interface BotSettings {
+  provider: BotProvider;
+  recall: RecallBotSettings;
   botName: string;
   joinBeforeMinutes: number;
   waitingRoomTimeoutMinutes: number;
@@ -546,6 +558,23 @@ export interface BotSettings {
   autoJoinDefault: AutoJoinMode;
   headless: boolean;
   selectors: Record<string, string>;
+}
+
+/** GET /admin/bot/providers — secrets are only reported as set / not set. */
+export interface BotProviderStatus {
+  recall: {
+    apiKeyConfigured: boolean;
+    webhookSecretConfigured: boolean;
+    region: string;
+    webhookUrl: string;
+    dashboardUrl: string;
+  };
+  selfHosted: { mode: 'puppeteer' | 'simulate'; persistentProfile: boolean };
+}
+
+export interface RecallConnectionTest {
+  ok: boolean;
+  message: string;
 }
 
 export interface NotificationSettings {

@@ -274,7 +274,51 @@ sequenceDiagram
 ```
 
 Failures: every stage is a BullMQ job with exponential backoff (AI: 5 attempts). Bot failures (not admitted, URL
-invalid, Meet blocked) set `status=failed` with `failure_reason` and notify the user. Admins can re-run AI
+invalid, Meet blocked) set `status=failed` with `failure_reason` and notify the user.
+
+### 5.4 Bot providers: self-hosted or Recall.ai
+
+`app_settings.bot.provider` picks who joins the meeting; admins switch it on **Meeting bot → Provider** and the next
+join uses it (no deploy). Scheduling is the same for both: the delayed `meeting-bot` job fires at
+`start − joinBeforeMinutes` and the bot process claims the meeting (`scheduled → joining`, `meetings.bot_provider`).
+
+- `self_hosted` — the Chromium runner above (§5.3). Free, but Google Meet often refuses automated guests.
+- `recall` — Recall.ai's managed bots. The bot process only creates the bot (`POST /api/v1/bot/`, our meeting id in
+  `metadata`) and stores its id in `meetings.external_bot_id`; Recall.ai records and transcribes.
+
+```mermaid
+sequenceDiagram
+  participant Q as BullMQ meeting-bot
+  participant B as bot process
+  participant R as Recall.ai
+  participant API as api /webhooks/recall
+  participant E as BullMQ bot-events
+  participant WK as worker
+  participant AQ as BullMQ ai-processing
+  Q->>B: join(meetingId)
+  B->>R: create bot (meeting_url, bot_name, transcript provider, automatic_leave)
+  B->>B: meetings.external_bot_id = bot.id
+  R->>API: bot.in_waiting_room / bot.in_call_recording / bot.call_ended / bot.done (signed)
+  API->>API: verify HMAC-SHA256 (webhook-id.timestamp.body, ±5 min)
+  API->>E: recall-event (jobId = recall-{webhook-id}: retries collapse)
+  E->>WK: apply event
+  WK->>WK: in-call events: status forward only (joining → waiting_room → in_progress)
+  WK->>R: bot.done: GET bot (source of truth) → recorded? transcript ready?
+  WK->>R: download transcript JSON (size-capped, schema-validated)
+  WK->>WK: transcript_segments, status=processing
+  WK->>AQ: process(meetingId) — same report/action items/reminders pipeline as §5.3
+  WK->>R: delete_media (optional, default on)
+```
+
+- **Ordering and duplicates.** Webhooks can be late, repeated or out of order. In-call events only move a meeting
+  forward; the final step re-reads the bot from Recall.ai, and an imported transcript is never imported twice.
+- **Transcript not ready.** With `recallai_streaming` the transcript can lag the call by minutes; the job is retried
+  (8 attempts, exponential 30 s ≈ 1 h) before the meeting fails with "Recall.ai did not deliver the transcript in time".
+- **Failures** map Recall.ai sub codes to user-facing reasons (e.g. `timeout_exceeded_waiting_room` →
+  "admission: Nobody admitted the bot from the waiting room in time"); unknown codes are kept, sanitised.
+- **Leave / delete** call `POST /bot/{id}/leave_call/`; what was recorded is still imported.
+- **Busy pool.** Create-bot is never retried blindly (a timed-out create may have created a bot); only `507`
+  (no bot available) and `429` are retried, every 30 s for up to 5 minutes. Admins can re-run AI
 processing from the admin panel (`POST /admin/meetings/:id/reprocess`).
 
 **Uploads.** `POST /meetings/upload` accepts audio (mp3/m4a/wav/webm) or a transcript (txt/vtt/srt). Audio is stored in
@@ -323,8 +367,9 @@ sequenceDiagram
 | Queue              | Producer              | Consumer | Job id                 | Retry               | Notes                          |
 |--------------------|-----------------------|----------|------------------------|---------------------|--------------------------------|
 | `calendar-sync`    | repeatable, api       | worker   | `sync-{userId}`        | 3, exp 30s          | `sync-all` every 10 min fans out |
-| `meeting-bot`      | calendar-sync, api    | bot      | `bot-{meetingId}`      | 1 (no auto re-join) | concurrency `BOT_CONCURRENCY`  |
-| `ai-processing`    | bot, upload, admin    | worker   | `ai-{meetingId}`       | 5, exp 60s          | Gemini rate limits             |
+| `meeting-bot`      | calendar-sync, api    | bot      | `bot-{meetingId}`      | 1 (no auto re-join) | concurrency `BOT_CONCURRENCY`; runs the Chromium bot or creates a Recall.ai bot |
+| `bot-events`       | api (Recall.ai webhook) | worker | `recall-{webhookId}`   | 8, exp 30s          | status updates, transcript import |
+| `ai-processing`    | bot, bot-events, upload, admin | worker | `ai-{meetingId}` | 5, exp 60s       | Gemini rate limits             |
 | `notifications`    | reminders, ai, admin  | worker   | `reminder-{id}` / auto | 3, exp 10s          | delayed jobs for reminders     |
 | `digest`           | repeatable hourly     | worker   | `digest-{yyyyMMddHH}`     | 2                   | fan-out by user timezone       |
 
@@ -390,7 +435,11 @@ Invalidation is centralised in `ContentCacheService.invalidate(scope)`, which ev
 - API is stateless → scale replicas behind a load balancer; Socket.IO uses the Redis adapter.
 - Workers scale on queue depth; bot containers scale with concurrent meetings (each Chromium needs ~300–500 MB RAM).
 - Graceful shutdown: workers finish their current jobs; the bot leaves the call cleanly on SIGTERM and still enqueues AI processing.
-- **Google Meet bot caveats**: the bot joins as a guest, so the host must admit it (`waiting_room` status,
+- **Recall.ai provider**: reliable Meet joins without a browser on our server; costs per recorded hour
+  (+ transcription unless Meet captions are used). Secrets stay in env (`RECALL_API_KEY`, `RECALL_WEBHOOK_SECRET`);
+  the admin panel only shows whether they are set. Recall.ai bots join as guests too: meetings that admit only
+  signed-in members of their organization need Recall.ai's Google login groups (not set up).
+- **Google Meet bot caveats** (self-hosted): the bot joins as a guest, so the host must admit it (`waiting_room` status,
   `waitingRoomTimeoutMinutes`). Transcripts come from Meet's live captions — the bot does not record audio, and the
   caption language follows the meeting. Meet's DOM changes over time, so the CSS selectors live in
   `app_settings.bot.selectors` and can be hot-fixed from the admin panel without a deploy.

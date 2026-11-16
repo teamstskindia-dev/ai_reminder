@@ -305,11 +305,11 @@ describe('buildErrorResponse', () => {
   });
 
   describe('domain errors', () => {
-    it('UpstreamError(gemini) → 502 UPSTREAM_ERROR with a safe message', () => {
+    it('UpstreamError(gemini) → 503 UPSTREAM_ERROR with a safe message (502 would be swallowed by Cloudflare)', () => {
       const err = AppException.upstream('gemini', new Error('quota exceeded for key AIzaSyFAKE'));
       expect(err).toBeInstanceOf(UpstreamError);
       const { status, body } = build(err);
-      expect(status).toBe(502);
+      expect(status).toBe(503);
       expect(body.error).toEqual({
         code: 'UPSTREAM_ERROR',
         message: 'The AI service is unavailable right now. Please try again.',

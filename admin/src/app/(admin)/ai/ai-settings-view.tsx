@@ -14,7 +14,7 @@ import { aiSettingsSchema } from '@/lib/schemas/settings';
 
 import { AiNav } from './ai-nav';
 
-const MODEL_SUGGESTIONS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'];
+const MODEL_SUGGESTIONS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
 const LANGUAGE_SUGGESTIONS = ['auto', 'English', 'Hindi', 'Spanish', 'French', 'German', 'Portuguese'];
 
 function Chips({

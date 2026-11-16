@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { CircleAlert, CircleCheck } from 'lucide-react-native';
+import { CircleAlert, CircleCheck, Mail } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { DEFAULT_ONBOARDING } from '@/providers/config/defaultConfig';
 import { useTheme } from '@/theme/ThemeProvider';
 import { toast } from '@/utils/toast';
 
+import { AppleSignInButton, signInWithApple } from './AppleSignInButton';
 import { GoogleMark } from './GoogleMark';
 import { openGoogleSignIn, signInErrorMessage, signInFailureMessage } from './google';
 
@@ -26,7 +27,7 @@ export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { config } = useConfig();
   const { branding, features } = config;
-  const { completeSignIn } = useAuth();
+  const { completeSignIn, completeAppleSignIn } = useAuth();
   const hero = useLoginHero().data ?? null;
   const slides = useOnboardingSlides().data;
   const [phase, setPhase] = useState<Phase>('idle');
@@ -69,6 +70,24 @@ export function LoginScreen() {
       if (isNewUser) toast(`Welcome to ${branding.appName}! Your calendar is syncing.`);
     } catch (error) {
       setError(signInFailureMessage(error));
+      setPhase('idle');
+    }
+  };
+
+  const signInApple = async () => {
+    setError(null);
+    const result = await signInWithApple();
+    if (result.type === 'cancelled') return;
+    if (result.type === 'error') {
+      setError("We couldn't complete Apple sign-in. Please try again.");
+      return;
+    }
+    setPhase('exchanging');
+    try {
+      const { isNewUser } = await completeAppleSignIn(result);
+      if (isNewUser) toast(`Welcome to ${branding.appName}!`);
+    } catch (e) {
+      setError(signInFailureMessage(e));
       setPhase('idle');
     }
   };
@@ -146,6 +165,26 @@ export function LoginScreen() {
       >
         {busy ? <ActivityIndicator color={theme.colors.primary} /> : <GoogleMark size={20} />}
         <Text variant="bodyStrong">{phase === 'exchanging' ? 'Signing you in…' : 'Continue with Google'}</Text>
+      </Touchable>
+
+      <AppleSignInButton onPress={() => void signInApple()} disabled={busy} />
+
+      <Touchable
+        accessibilityRole="button"
+        accessibilityLabel="Continue with email"
+        disabled={busy}
+        onPress={() => router.push('/email-sign-in')}
+        style={({ pressed }) => [
+          styles.google,
+          {
+            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+            borderRadius: theme.radii.md,
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <Mail size={20} color={theme.colors.text} />
+        <Text variant="bodyStrong">Continue with email</Text>
       </Touchable>
 
       {!features.signupsEnabled ? (

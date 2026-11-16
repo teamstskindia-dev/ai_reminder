@@ -4,13 +4,40 @@ import { useRootNavigationState } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+import { getErrorMessage } from '@/api/errors';
 import { useUnreadCount } from '@/api/hooks/notifications';
 import { qk } from '@/api/queryKeys';
+import { completeReminder, snoozeReminder } from '@/api/resources/reminders';
 import type { FeatureKey } from '@/api/types';
 import { logger, reportError } from '@/utils/logger';
+import { toast } from '@/utils/toast';
 
+import { ReminderAction } from './handler';
 import { registerForPushNotifications } from './registration';
 import { openNotificationTarget } from './routing';
+
+/** Done / Snooze tapped on a reminder notification. Returns false for a plain tap. */
+async function runReminderAction(response: Notifications.NotificationResponse): Promise<boolean> {
+  const { actionIdentifier } = response;
+  const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+  const reminderId = typeof data?.reminderId === 'string' ? data.reminderId : null;
+  const known = Object.values(ReminderAction) as string[];
+  if (!reminderId || !known.includes(actionIdentifier)) return false;
+  void Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => undefined);
+  try {
+    if (actionIdentifier === ReminderAction.done) {
+      await completeReminder(reminderId);
+      toast('Nice one! Marked done.');
+    } else {
+      const minutes = actionIdentifier === ReminderAction.snooze15 ? 15 : 60;
+      await snoozeReminder(reminderId, minutes);
+      toast(minutes === 15 ? "Okay, I'll remind you in 15 minutes." : "Okay, I'll remind you in an hour.");
+    }
+  } catch (error) {
+    toast(getErrorMessage(error, "Couldn't update that reminder."));
+  }
+  return true;
+}
 
 /** Registers this device for push after sign-in when the feature and the user's setting allow it. */
 export function usePushRegistration(options: { enabled: boolean; brandColor: string }) {
@@ -43,7 +70,15 @@ export function useNotificationRouting(options: { signedIn: boolean; isEnabled: 
     if (!signedIn || !navigationReady) return;
 
     const open = (response: Notifications.NotificationResponse) => {
-      openNotificationTarget(response.notification.request.content.data, isEnabled);
+      void runReminderAction(response).then((handled) => {
+        if (handled) {
+          void qc.invalidateQueries({ queryKey: qk.reminders.all });
+          void qc.invalidateQueries({ queryKey: qk.today });
+          void qc.invalidateQueries({ queryKey: qk.dashboard });
+          return;
+        }
+        openNotificationTarget(response.notification.request.content.data, isEnabled);
+      });
     };
 
     const initial = Notifications.getLastNotificationResponse();
@@ -59,6 +94,7 @@ export function useNotificationRouting(options: { signedIn: boolean; isEnabled: 
     const receiveSub = Notifications.addNotificationReceivedListener(() => {
       void qc.invalidateQueries({ queryKey: qk.notifications.all });
       void qc.invalidateQueries({ queryKey: qk.dashboard });
+      void qc.invalidateQueries({ queryKey: qk.today });
       void qc.invalidateQueries({ queryKey: qk.reminders.all });
     });
     return () => {

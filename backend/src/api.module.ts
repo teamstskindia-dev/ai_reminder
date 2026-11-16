@@ -17,6 +17,7 @@ import { StorageService } from './infra/storage/storage.service';
 import { ActionItemsController } from './modules/action-items/action-items.controller';
 import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { AdminAuthController } from './modules/admin/admin-auth.controller';
+import { AdminBotController } from './modules/admin/admin-bot.controller';
 import { AdminContentController } from './modules/admin/admin-content.controller';
 import { AdminSystemController } from './modules/admin/admin-system.controller';
 import { AdminUsersController } from './modules/admin/admin-users.controller';
@@ -29,7 +30,11 @@ import { AuthController } from './modules/auth/auth.controller';
 import { AuthGuard } from './modules/auth/auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { BotSchedulingModule } from './modules/bot/bot-scheduling.module';
+import { RecallWebhookController } from './modules/bot/recall/recall-webhook.controller';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { CompanionController } from './modules/companion/companion.controller';
+import { CompanionModule } from './modules/companion/companion.module';
+import { TodayService } from './modules/companion/today.service';
 import { ContentModule } from './modules/content/content.module';
 import { DashboardController, DashboardService } from './modules/dashboard/dashboard.controller';
 import { DevicesController } from './modules/devices/devices.controller';
@@ -39,6 +44,8 @@ import { MeetingsController } from './modules/meetings/meetings.controller';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { NotificationsController } from './modules/notifications/notifications.controller';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OnboardingController, ProfileController } from './modules/onboarding/onboarding.controller';
+import { OnboardingService } from './modules/onboarding/onboarding.service';
 import { RealtimeGateway } from './modules/notifications/realtime.gateway';
 import { PublicController } from './modules/public/public.controller';
 import { RemindersController } from './modules/reminders/reminders.controller';
@@ -86,14 +93,18 @@ class StorageBootstrap implements OnApplicationBootstrap {
     AiModule,
     ContentModule,
     AdminModule,
+    CompanionModule,
   ],
   controllers: [
     HealthController,
     PublicController,
     AuthController,
     MeController,
+    ProfileController,
+    OnboardingController,
     IntegrationsController,
     DashboardController,
+    CompanionController,
     AnalyticsController,
     MeetingsController,
     ActionItemsController,
@@ -101,15 +112,19 @@ class StorageBootstrap implements OnApplicationBootstrap {
     NotificationsController,
     DevicesController,
     AssistantController,
+    RecallWebhookController,
     AdminAuthController,
     AdminUsersController,
     AdminContentController,
     AdminSystemController,
+    AdminBotController,
   ],
   providers: [
     DashboardService,
+    TodayService,
     AnalyticsService,
     AssistantService,
+    OnboardingService,
     RealtimeGateway,
     StorageBootstrap,
     // Global guards run in this order: maintenance → auth → rate limit.

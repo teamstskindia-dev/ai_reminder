@@ -125,10 +125,55 @@ docker compose logs --tail 50 watchtower           # update checks / pulls
 curl -s http://127.0.0.1:4000/api/v1/health        # {"status":"ok","version":"<sha>"}
 ```
 
-- **Change a secret:** edit `/opt/remi/.env.production`, then `docker compose up -d` (recreates api/worker/bot).
-  Add new variables **before** merging code that needs them.
+- **Add or change an app variable:** a deploy ships code only. CI never sees the app secrets, so a variable you add to
+  `backend/.env.production` on your machine does **not** reach production by itself. Push it:
+  ```bash
+  cd backend
+  npm run env:push -- --dry-run   # which variables differ from the server (names only, never values)
+  npm run env:push                # asks, uploads (keeps .env.production.bak-<time>), recreates api/worker/bot,
+                                  # waits until healthy, restores the backup if they are not
+  ```
+  (`backend/deploy/push-env.sh`; it only touches `/opt/remi/.env.production` and Remi's containers.) Push new
+  variables **before** merging code that needs them.
+- **Hostinger's Docker Manager → Environment box** shows `/opt/remi/.env`, which holds only compose settings
+  (`COMPOSE_PROFILES=edge`, `API_DOMAIN`). That is expected. App variables live in `/opt/remi/.env.production`, which
+  that screen does not show. Do not paste secrets into the Environment box, because the containers don't read it.
 - **Change the stack definition:** copy `backend/deploy/docker-compose.prod.yml` to `/opt/remi/docker-compose.yml`, then
   run `docker compose up -d`. Watchtower updates images, not the compose file.
+- **Recall.ai meeting bots (recommended).** Google Meet refuses many self-hosted bots, so production can hand
+  joins to Recall.ai instead:
+  1. Create a Recall.ai workspace (pick the region once: `us-east-1`, `us-west-2`, `eu-central-1` or `ap-northeast-1`)
+     and an API key under **Developers → API Keys**.
+  2. In **Webhooks**, add the endpoint `https://api.leogix.io/api/v1/webhooks/recall` and subscribe it to every
+     `bot.*` event. Under **Developers → API Keys & Secrets**, create a workspace verification secret (`whsec_…`).
+  3. Add to the git-ignored `backend/.env.production`:
+     ```sh
+     RECALL_API_KEY=<key>
+     RECALL_REGION=us-east-1
+     RECALL_WEBHOOK_SECRET=whsec_<secret>
+     ```
+     then `cd backend && npm run env:push`. This copies the file to `/opt/remi/.env.production` and restarts
+     api/worker/bot.
+  4. Admin → **Meeting bot → Provider**: choose **Recall.ai**, press **Test connection**, save. The next bot that
+     joins uses it; switch back to Self-hosted Chromium the same way.
+
+  Webhooks without a valid signature (or older than 5 minutes) get `401` and are logged as `recall webhook refused`.
+  Event processing shows up on **Admin → System → Queues → Bot events**.
+- **Meeting bot sign-in (self-hosted provider, one time).** Google Meet refuses signed-out automated guests ("You can't join this video
+  call"), so the bot joins signed in to its **own** Google account, for example `remi.notetaker@gmail.com`. Name the
+  account "Remi Notetaker"; meeting hosts see that name and admit it. The session lives in the `bot-profile` volume,
+  which only `bot` and `bot-login` mount.
+  ```bash
+  # on the VPS
+  cd /opt/remi && docker compose stop bot
+  BOT_LOGIN_VNC_PASSWORD='<temporary password>' docker compose run --rm --service-ports bot-login
+  # on your Mac, in another terminal: SSH tunnel to the VNC port (published on the server's loopback only)
+  ssh -N -L 5900:127.0.0.1:5900 root@194.238.16.75
+  # open vnc://localhost:5900 (Finder → Go → Connect to Server), enter the temporary password,
+  # sign in to the bot account in the Chromium window, then press Ctrl+C on the VPS
+  docker compose start bot
+  ```
+  Repeat if Google signs the bot out (failure reason: "…not signed in to a Google account").
 - **First-time bootstrap** (already done on 194.238.16.75). Build or pull the image, then:
   ```bash
   install -d -m 0700 /opt/remi

@@ -43,6 +43,23 @@ case "$process" in
   migrate)
     migrate
     ;;
+  bot-login)
+    # One-time sign-in of the bot's own Google account into the persistent profile the bot uses (BOT_PROFILE_DIR).
+    # Viewed over VNC (port 5900, password BOT_LOGIN_VNC_PASSWORD); publish it on 127.0.0.1 only and use an SSH tunnel.
+    # Stop the bot first: one profile can only be open in one browser.
+    : "${BOT_PROFILE_DIR:?BOT_PROFILE_DIR is not set}"
+    : "${BOT_LOGIN_VNC_PASSWORD:?set BOT_LOGIN_VNC_PASSWORD for this VNC session}"
+    mkdir -p "$BOT_PROFILE_DIR"
+    rm -f "$BOT_PROFILE_DIR/SingletonLock" "$BOT_PROFILE_DIR/SingletonSocket" "$BOT_PROFILE_DIR/SingletonCookie"
+    Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &
+    export DISPLAY=:99
+    sleep 1
+    x11vnc -storepasswd "$BOT_LOGIN_VNC_PASSWORD" /tmp/vncpass >/dev/null 2>&1
+    x11vnc -display :99 -rfbport 5900 -rfbauth /tmp/vncpass -forever -shared -quiet -bg -o /tmp/x11vnc.log
+    echo "bot-login: VNC is up on port 5900. Sign in to the bot's Google account, then stop this container (Ctrl+C)."
+    exec chromium --no-sandbox --user-data-dir="$BOT_PROFILE_DIR" --no-first-run --no-default-browser-check \
+      --window-size=1280,800 --lang=en-US "https://accounts.google.com/"
+    ;;
   *)
     exec "$process" "$@"
     ;;

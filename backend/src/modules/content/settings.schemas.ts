@@ -71,9 +71,16 @@ export const seoSchema = z
   })
   .strict();
 
+/** Gemini 1.x / 2.x generation models are deprecated: refuse them so a stale name cannot be configured again. */
+const DEPRECATED_GEMINI_MODEL = /^(models\/)?gemini-[12](\.|-|$)/i;
+
 export const aiSchema = z
   .object({
-    model: text(100).min(1),
+    model: text(100)
+      .min(1)
+      .refine((m) => !DEPRECATED_GEMINI_MODEL.test(m), {
+        message: 'Gemini 1.x/2.x models are deprecated; use gemini-3.5-flash or newer',
+      }),
     embeddingModel: text(100).min(1),
     temperature: z.number().min(0).max(2),
     maxOutputTokens: z.number().int().min(256).max(65536),
@@ -82,8 +89,34 @@ export const aiSchema = z
   })
   .strict();
 
+/** Who runs the notetaker: the self-hosted Chromium runner (bot container) or Recall.ai's managed bots. */
+export const BOT_PROVIDERS = ['self_hosted', 'recall'] as const;
+export type BotProvider = (typeof BOT_PROVIDERS)[number];
+
+/** `auto` (Recall.ai detects the language) or a code such as en, en_us, de, hi, pt-BR. */
+const RECALL_LANGUAGE_RE = /^(auto|[a-z]{2,3}(?:[_-][A-Za-z]{2,4})?)$/;
+
+export const RECALL_SETTINGS_DEFAULTS = {
+  transcription: 'recallai_streaming',
+  languageCode: 'auto',
+  deleteMediaAfterImport: true,
+} as const;
+
+export const recallBotSchema = z
+  .object({
+    /** recallai_streaming: Recall.ai's own speech-to-text (paid). meeting_captions: Google Meet captions (free, no auto language). */
+    transcription: z.enum(['recallai_streaming', 'meeting_captions']),
+    languageCode: z.string().regex(RECALL_LANGUAGE_RE, 'must be "auto" or a language code like en, en_us or de'),
+    /** Delete the recording and transcript from Recall.ai once Remi has imported the transcript. */
+    deleteMediaAfterImport: z.boolean(),
+  })
+  .strict();
+
 export const botSchema = z
   .object({
+    // Defaults keep bot values saved before providers existed valid.
+    provider: z.enum(BOT_PROVIDERS).default('self_hosted'),
+    recall: recallBotSchema.default({ ...RECALL_SETTINGS_DEFAULTS }),
     botName: singleLine(60).trim().min(1),
     joinBeforeMinutes: z.number().int().min(0).max(30),
     waitingRoomTimeoutMinutes: z.number().int().min(1).max(60),
@@ -120,6 +153,7 @@ export const SETTINGS_SCHEMAS = {
 export type SettingKey = keyof typeof SETTINGS_SCHEMAS;
 export type SettingValue = { [K in SettingKey]: z.output<(typeof SETTINGS_SCHEMAS)[K]> };
 export type BotSettings = SettingValue['bot'];
+export type RecallBotSettings = BotSettings['recall'];
 export type AiSettings = SettingValue['ai'];
 export type NotificationSettings = SettingValue['notifications'];
 

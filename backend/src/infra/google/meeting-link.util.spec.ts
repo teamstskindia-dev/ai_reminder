@@ -78,6 +78,17 @@ describe('detectMeetingLink', () => {
     ).toEqual({ platform: 'other', url: 'https://example.com/call/1' });
   });
 
+  it('finds a Meet instant-meeting link (/meet/ form) in the description', () => {
+    expect(
+      detectMeetingLink({
+        description: 'Join here: https://meet.google.com/meet/nkk-ezpa-cxn see you',
+      }),
+    ).toEqual({
+      platform: 'google_meet',
+      url: 'https://meet.google.com/meet/nkk-ezpa-cxn',
+    });
+  });
+
   it('finds a Zoom URL in the location', () => {
     expect(
       detectMeetingLink({

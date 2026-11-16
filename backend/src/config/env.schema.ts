@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 import { remoteDatabaseViolation } from './database-target';
 
+/** Recall.ai regions (each has its own API host and API keys). */
+export const RECALL_REGIONS = ['us-east-1', 'us-west-2', 'eu-central-1', 'ap-northeast-1'] as const;
+export type RecallRegion = (typeof RECALL_REGIONS)[number];
+
 const bool = (def: boolean) =>
   z
     .union([z.boolean(), z.string()])
@@ -107,6 +111,8 @@ export const envSchema = z
     GOOGLE_REDIRECT_URI: z.url().default('http://localhost:4000/api/v1/auth/google/callback'),
     /** Default: remi:// + exp:// (Expo Go) in development, remi:// only in production. */
     MOBILE_REDIRECT_ALLOWLIST: list([]),
+    /** Sign in with Apple audiences: the iOS bundle id (and a Services ID if the website adds Apple later). */
+    APPLE_CLIENT_IDS: list(['com.remi.app']),
 
     GEMINI_API_KEY: optionalString,
     AI_MOCK: bool(false),
@@ -131,7 +137,29 @@ export const envSchema = z
 
     BOT_MODE: z.enum(['puppeteer', 'simulate']).default('simulate'),
     BOT_CONCURRENCY: int(1, 1, 10),
+    /**
+     * Persistent Chromium profile signed in to the bot's own Google account (see `bot-login` in the entrypoint).
+     * Google Meet refuses signed-out automated guests, so production sets this. Unset = fresh temporary profile per job.
+     */
+    BOT_PROFILE_DIR: optionalString,
     CHROME_PATH: z.string().default('/usr/bin/chromium'),
+
+    /**
+     * Recall.ai managed meeting bots (admin → Meeting bot → Provider = Recall.ai). The key belongs to one region:
+     * use the region your Recall.ai workspace was created in. Both secrets are optional until that provider is chosen.
+     */
+    RECALL_API_KEY: optionalString,
+    RECALL_REGION: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.enum(RECALL_REGIONS).default('us-east-1'),
+    ),
+    /** Workspace verification secret (Recall.ai dashboard → Developers → API Keys & Secrets), `whsec_…`. */
+    RECALL_WEBHOOK_SECRET: optionalString.pipe(
+      z
+        .string()
+        .regex(/^whsec_[A-Za-z0-9+/]+={0,2}$/, 'RECALL_WEBHOOK_SECRET must be the whsec_… value from Recall.ai')
+        .optional(),
+    ),
     CALENDAR_SYNC_INTERVAL_MINUTES: int(10, 1, 1440),
   })
   .superRefine((env, ctx) => {
@@ -156,6 +184,13 @@ export const envSchema = z
     );
     if (remoteDb) {
       ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: remoteDb });
+    }
+    if (env.BOT_PROFILE_DIR && env.BOT_CONCURRENCY > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BOT_CONCURRENCY'],
+        message: 'BOT_CONCURRENCY must be 1 with BOT_PROFILE_DIR (one signed-in profile cannot run two browsers)',
+      });
     }
     if (env.CORS_ORIGINS.some((o) => o.includes('*'))) {
       ctx.addIssue({

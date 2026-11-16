@@ -19,6 +19,14 @@ export class RemindersController {
     return this.reminders.list(userId, q);
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a reminder (opened from its notification)' })
+  @ApiDataResponse(Reminder)
+  @ApiErrors('NOT_FOUND')
+  get(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.reminders.get(userId, id);
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Create a reminder',
@@ -45,6 +53,18 @@ export class RemindersController {
   @ApiErrors('NOT_FOUND')
   async remove(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.reminders.remove(userId, id);
+  }
+
+  @Post(':id/done')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Mark a reminder done',
+    description: 'Stops it (no follow-up) and marks a linked action item done. Calling it again is a no-op.',
+  })
+  @ApiDataResponse(Reminder)
+  @ApiErrors('NOT_FOUND', 'CONFLICT')
+  done(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.reminders.done(userId, id);
   }
 
   @Post(':id/snooze')

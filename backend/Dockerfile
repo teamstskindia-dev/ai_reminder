@@ -4,12 +4,18 @@
 # Stages: deps (npm ci + prisma generate) → build (nest build) → prod-deps (npm prune) → runtime (final).
 
 ARG NODE_VERSION=24.13.0
+# Optional Debian mirror HOST for slow networks, e.g. DEBIAN_MIRROR=http://ftp.de.debian.org — replaces deb.debian.org for
+# both /debian and /debian-security (the mirror must serve both). Empty = deb.debian.org (CI).
+ARG DEBIAN_MIRROR=
 
 # ---------- deps: full install + Prisma client generation ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS deps
+ARG DEBIAN_MIRROR
 WORKDIR /app
 ENV CHECKPOINT_DISABLE=1 PRISMA_HIDE_UPDATE_MESSAGE=1 PUPPETEER_SKIP_DOWNLOAD=1
-RUN apt-get update \
+RUN if [ -n "$DEBIAN_MIRROR" ]; then \
+      sed -i "s|^URIs: http://deb.debian.org/|URIs: ${DEBIAN_MIRROR%/}/|" /etc/apt/sources.list.d/debian.sources; fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json prisma.config.ts ./
@@ -37,6 +43,7 @@ RUN npm prune --omit=dev --no-audit --no-fund \
 
 # ---------- runtime: the single final image ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ARG DEBIAN_MIRROR
 ENV NODE_ENV=production \
     CHECKPOINT_DISABLE=1 \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
@@ -44,10 +51,12 @@ ENV NODE_ENV=production \
 WORKDIR /app
 # tini (PID 1), openssl/ca-certificates (TLS to Supabase), Debian's Chromium + Xvfb + fonts for the bot.
 # npm/yarn/corepack are not needed at runtime (the entrypoint calls node and the local Prisma CLI directly).
-RUN apt-get update \
+RUN if [ -n "$DEBIAN_MIRROR" ]; then \
+      sed -i "s|^URIs: http://deb.debian.org/|URIs: ${DEBIAN_MIRROR%/}/|" /etc/apt/sources.list.d/debian.sources; fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends \
      tini openssl ca-certificates \
-     chromium xvfb xauth fonts-liberation \
+     chromium xvfb xauth fonts-liberation x11vnc \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc /usr/share/man \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
@@ -56,6 +65,9 @@ COPY --chown=node:node prisma ./prisma
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/remi-entrypoint
+# Mount point for the bot's persistent, signed-in Chromium profile (BOT_PROFILE_DIR); owned by `node` so a named
+# volume mounted here starts out writable.
+RUN install -d -o node -g node -m 0700 /home/node/bot-profile
 # Reported by GET /api/v1/health as `version`; CI waits for it to confirm Watchtower rolled out this build.
 ARG GIT_SHA=dev
 ENV REMI_VERSION=${GIT_SHA}

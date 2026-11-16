@@ -25,16 +25,20 @@ export class QueueAdminService {
   constructor(
     @InjectQueue(QUEUE.CALENDAR_SYNC) sync: Queue,
     @InjectQueue(QUEUE.MEETING_BOT) bot: Queue,
+    @InjectQueue(QUEUE.BOT_EVENTS) botEvents: Queue,
     @InjectQueue(QUEUE.AI) ai: Queue,
     @InjectQueue(QUEUE.NOTIFICATIONS) notifications: Queue,
     @InjectQueue(QUEUE.DIGEST) digest: Queue,
+    @InjectQueue(QUEUE.COMPANION) companion: Queue,
   ) {
     this.queues = {
       'calendar-sync': sync,
       'meeting-bot': bot,
+      'bot-events': botEvents,
       'ai-processing': ai,
       notifications,
       digest,
+      companion,
     };
   }
 

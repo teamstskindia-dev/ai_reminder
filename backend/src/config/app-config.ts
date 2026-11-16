@@ -59,6 +59,10 @@ export class AppConfig {
     return Buffer.from(this.env.ENCRYPTION_KEY, 'base64');
   }
 
+  get apple() {
+    return { clientIds: this.env.APPLE_CLIENT_IDS };
+  }
+
   get google() {
     return {
       clientId: this.env.GOOGLE_CLIENT_ID,
@@ -137,6 +141,20 @@ export class AppConfig {
       mode: this.env.BOT_MODE,
       concurrency: this.env.BOT_CONCURRENCY,
       chromePath: this.env.CHROME_PATH,
+      profileDir: this.env.BOT_PROFILE_DIR,
+    };
+  }
+
+  /** Recall.ai API (host per region) and webhook verification secret. Never log these values. */
+  get recall() {
+    const region = this.env.RECALL_REGION;
+    return {
+      apiKey: this.env.RECALL_API_KEY,
+      region,
+      baseUrl: `https://${region}.recall.ai`,
+      webhookSecret: this.env.RECALL_WEBHOOK_SECRET,
+      configured: !!this.env.RECALL_API_KEY,
+      webhookConfigured: !!this.env.RECALL_WEBHOOK_SECRET,
     };
   }
 

@@ -60,7 +60,7 @@ const SEED: Record<SettingKey, unknown> = {
     keywords: ['ai meeting assistant', 'meeting notes', 'google meet notetaker', 'action items', 'reminders'],
   },
   ai: {
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.5-flash',
     embeddingModel: 'gemini-embedding-001',
     temperature: 0.3,
     maxOutputTokens: 8192,
@@ -68,6 +68,12 @@ const SEED: Record<SettingKey, unknown> = {
     enableEmbeddings: true,
   },
   bot: {
+    provider: 'self_hosted',
+    recall: {
+      transcription: 'recallai_streaming',
+      languageCode: 'auto',
+      deleteMediaAfterImport: true,
+    },
     botName: 'Remi Notetaker',
     joinBeforeMinutes: 1,
     waitingRoomTimeoutMinutes: 10,
@@ -91,7 +97,8 @@ const SEED: Record<SettingKey, unknown> = {
       inCallIndicator: "button[aria-label='Leave call']",
       waitingRoomText:
         "Asking to join|Please wait until a meeting host brings you into the call|You'll join the call when someone lets you in",
-      deniedText: "You can't join this call|Someone in the call denied your request|You've been removed",
+      deniedText:
+        "You can't join this video call|You can't join this call|Someone in the call denied your request|You've been removed",
       endedText: "You left the meeting|The call has ended|Return to home screen|You've been removed from the meeting",
     },
   },
@@ -252,5 +259,71 @@ describe('settings schemas', () => {
 
   it('public keys are the five client-visible settings', () => {
     expect([...PUBLIC_SETTING_KEYS].sort()).toEqual(['app', 'branding', 'features', 'seo', 'theme']);
+  });
+
+  describe('bot provider', () => {
+    const bot = SEED.bot as Record<string, unknown>;
+
+    it('fills provider and recall defaults into a value saved before providers existed', () => {
+      const legacy = { ...bot };
+      delete legacy.provider;
+      delete legacy.recall;
+      const result = validateSetting('bot', legacy);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value.provider).toBe('self_hosted');
+        expect(result.value.recall).toEqual({
+          transcription: 'recallai_streaming',
+          languageCode: 'auto',
+          deleteMediaAfterImport: true,
+        });
+      }
+    });
+
+    it('accepts recall with meeting captions and a fixed language', () => {
+      const result = validateSetting('bot', {
+        ...bot,
+        provider: 'recall',
+        recall: { transcription: 'meeting_captions', languageCode: 'en_us', deleteMediaAfterImport: false },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unknown provider, transcription or language code', () => {
+      expect(fieldsOf(validateSetting('bot', { ...bot, provider: 'zoom_sdk' }))).toEqual(['value.provider']);
+      const recall = bot.recall as Record<string, unknown>;
+      expect(fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, transcription: 'whisper' } }))).toEqual([
+        'value.recall.transcription',
+      ]);
+      expect(
+        fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, languageCode: 'english; drop' } })),
+      ).toEqual(['value.recall.languageCode']);
+      expect(fieldsOf(validateSetting('bot', { ...bot, recall: { ...recall, apiKey: 'x' } }))).toEqual([
+        'value.recall',
+      ]);
+    });
+  });
+
+  describe('ai.model rejects deprecated Gemini generations', () => {
+    const withModel = (model: string) => validateSetting('ai', { ...SETTINGS_DEFAULTS.ai, model });
+
+    it.each([
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-2.0-flash',
+      'gemini-1.5-pro',
+      'models/gemini-2.5-flash-lite',
+    ])('rejects %s', (model) => {
+      const result = withModel(model);
+      expect(result.success).toBe(false);
+      expect(JSON.stringify(result)).toContain('deprecated');
+    });
+
+    it.each(['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-4-argon'])(
+      'accepts %s',
+      (model) => {
+        expect(withModel(model).success).toBe(true);
+      },
+    );
   });
 });

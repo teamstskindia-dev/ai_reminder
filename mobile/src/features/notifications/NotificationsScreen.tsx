@@ -2,12 +2,18 @@ import { Stack } from 'expo-router';
 import {
   AlarmClock,
   BellOff,
+  BellRing,
   CalendarClock,
   CheckCheck,
   FileText,
+  HeartHandshake,
   ListChecks,
   Megaphone,
+  MoonStar,
   Newspaper,
+  PartyPopper,
+  Sparkles,
+  Sun,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -40,6 +46,12 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   daily_digest: Newspaper,
   bot_failed: TriangleAlert,
   broadcast: Megaphone,
+  welcome: PartyPopper,
+  morning_brief: Sun,
+  evening_checkin: MoonStar,
+  reminder_followup: BellRing,
+  companion_nudge: HeartHandshake,
+  weekly_recap: Sparkles,
 };
 
 const NotificationRow = memo(function NotificationRow({
@@ -95,7 +107,7 @@ export function NotificationsScreen() {
 
   const open = (notification: AppNotification) => {
     if (!notification.readAt) markRead.mutate(notification);
-    openNotificationTarget(notification.data, isEnabled, { fromNotificationsScreen: true });
+    openNotificationTarget({ ...notification.data, type: notification.type }, isEnabled, { fromNotificationsScreen: true });
   };
 
   const empty = query.isPending ? (

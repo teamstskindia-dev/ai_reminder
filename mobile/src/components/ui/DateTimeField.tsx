@@ -1,5 +1,5 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { CalendarClock, X } from 'lucide-react-native';
+import { CalendarClock, Clock, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +16,8 @@ export interface DateTimeFieldProps {
   label: string;
   value: Date | null;
   onChange: (value: Date | null) => void;
-  mode?: 'datetime' | 'date';
+  /** `time` picks only a time of day (the date part of the value is kept). */
+  mode?: 'datetime' | 'date' | 'time';
   minimumDate?: Date;
   placeholder?: string;
   clearable?: boolean;
@@ -41,7 +42,7 @@ function IosPickerSheet({
 }: {
   visible: boolean;
   initial: Date;
-  mode: 'datetime' | 'date';
+  mode: 'datetime' | 'date' | 'time';
   minimumDate?: Date;
   title: string;
   onCancel: () => void;
@@ -98,7 +99,14 @@ export function DateTimeField({
 }: DateTimeFieldProps) {
   const theme = useTheme();
   const [iosOpen, setIosOpen] = useState(false);
-  const display = value ? (mode === 'date' ? formatDayLabel(value) : `${formatDayLabel(value)} · ${formatTime(value)}`) : placeholder;
+  const display = value
+    ? mode === 'date'
+      ? formatDayLabel(value)
+      : mode === 'time'
+        ? formatTime(value)
+        : `${formatDayLabel(value)} · ${formatTime(value)}`
+    : placeholder;
+  const FieldIcon = mode === 'time' ? Clock : CalendarClock;
 
   const open = () => {
     if (Platform.OS === 'ios') {
@@ -107,6 +115,16 @@ export function DateTimeField({
     }
     const initial = value ?? minimumDate ?? new Date();
     try {
+      if (mode === 'time') {
+        DateTimePickerAndroid.open({
+          value: initial,
+          mode: 'time',
+          is24Hour: false,
+          title: label,
+          onValueChange: (_e, pickedTime) => onChange(merge(initial, pickedTime)),
+        });
+        return;
+      }
       DateTimePickerAndroid.open({
         value: initial,
         mode: 'date',
@@ -143,7 +161,7 @@ export function DateTimeField({
           { borderColor: error ? theme.colors.danger : theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
         ]}
       >
-        <CalendarClock size={18} color={theme.colors.textMuted} />
+        <FieldIcon size={18} color={theme.colors.textMuted} />
         <Text variant="body" tone={value ? 'default' : 'muted'} style={styles.value}>
           {display}
         </Text>

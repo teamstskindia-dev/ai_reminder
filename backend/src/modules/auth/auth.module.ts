@@ -7,6 +7,8 @@ import { AuthCookiesService } from './auth-cookies.service';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { AuthSessionsRepository } from './auth-sessions.repository';
+import { AppleAuthService } from './apple-auth.service';
+import { EmailAuthService } from './email-auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { RefreshSessionService } from './refresh-session.service';
 import { TokenService } from './token.service';
@@ -20,6 +22,8 @@ import { TokenService } from './token.service';
     AuthCookiesService,
     AuthGuard,
     GoogleAuthService,
+    EmailAuthService,
+    AppleAuthService,
     AuthService,
     {
       provide: RefreshSessionService,
@@ -37,6 +41,7 @@ import { TokenService } from './token.service';
     RefreshSessionService,
     AuthService,
     GoogleAuthService,
+    EmailAuthService,
   ],
 })
 export class AuthModule {}

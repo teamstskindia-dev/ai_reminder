@@ -10,11 +10,14 @@ export class Reminder implements Contract.Reminder {
   body: string | null;
   @ApiDateTime() remindAt: string;
   @ApiProperty({ enum: REMINDER_CHANNELS, isArray: true }) channels: Contract.ReminderChannel[];
+  @ApiProperty({ enum: ['pending', 'sent', 'done', 'cancelled', 'failed'] })
   status: Contract.ReminderStatus;
   source: 'ai' | 'manual' | 'system';
   @ApiUuid() meetingId: string | null;
   meetingTitle: string | null;
   @ApiUuid() actionItemId: string | null;
   @ApiDateTime() sentAt: string | null;
+  /** When the user tapped Done. */
+  @ApiDateTime() doneAt: string | null;
   @ApiDateTime() createdAt: string;
 }

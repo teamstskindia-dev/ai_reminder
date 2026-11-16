@@ -5,6 +5,7 @@ import {
   IsMeetUrl,
   IsSafeUrl,
   isJoinableMeetUrl,
+  normalizeMeetUrl,
   isSafeUrl,
   MOBILE_ROUTE_RE,
   zFontFamily,
@@ -85,16 +86,22 @@ describe('isSafeUrl', () => {
 });
 
 describe('isJoinableMeetUrl', () => {
-  it.each(['https://meet.google.com/abc-defg-hij', 'https://meet.google.com/abc-defg-hij?authuser=0&pli=1'])(
-    'accepts %s',
-    (url) => {
-      expect(isJoinableMeetUrl(url)).toBe(true);
-    },
-  );
+  it.each([
+    'https://meet.google.com/abc-defg-hij',
+    'https://meet.google.com/abc-defg-hij?authuser=0&pli=1',
+    'https://meet.google.com/meet/abc-defg-hij',
+    'https://meet.google.com/meet/abc-defg-hij?authuser=0',
+    'https://meet.google.com/abc-defg-hij/',
+  ])('accepts %s', (url) => {
+    expect(isJoinableMeetUrl(url)).toBe(true);
+  });
 
   it.each([
     ['http://meet.google.com/abc-defg-hij'],
     ['https://meet.google.com/abc-defg-hij/extra'],
+    ['https://meet.google.com/meet/'],
+    ['https://meet.google.com/other/abc-defg-hij'],
+    ['https://meet.google.com/meet/meet/abc-defg-hij'],
     ['https://meet.google.com/ABC-defg-hij'],
     ['https://meet.google.com/abcd-efgh-ijk'],
     ['https://meet.google.com/lookup/abcdefghij'],
@@ -178,4 +185,22 @@ describe('class-validator decorators', () => {
     expect(byProp.href?.[0]).toContain('https://');
     expect(byProp.meetingUrl?.[0]).toContain('Google Meet');
   });
+});
+
+describe('normalizeMeetUrl', () => {
+  it.each([
+    ['https://meet.google.com/abc-defg-hij', 'https://meet.google.com/abc-defg-hij'],
+    ['https://meet.google.com/meet/nkk-ezpa-cxn', 'https://meet.google.com/nkk-ezpa-cxn'],
+    ['https://meet.google.com/meet/nkk-ezpa-cxn?authuser=1&hs=179', 'https://meet.google.com/nkk-ezpa-cxn'],
+    ['https://meet.google.com/abc-defg-hij/', 'https://meet.google.com/abc-defg-hij'],
+  ])('%s → %s', (input, expected) => {
+    expect(normalizeMeetUrl(input)).toBe(expected);
+  });
+
+  it.each(['https://evil.com/meet/abc-defg-hij', 'http://meet.google.com/meet/abc-defg-hij', 'nope', 42])(
+    'returns null for %p',
+    (input) => {
+      expect(normalizeMeetUrl(input)).toBeNull();
+    },
+  );
 });

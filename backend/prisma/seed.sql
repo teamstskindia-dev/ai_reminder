@@ -65,7 +65,7 @@ $json$::jsonb),
 $json$::jsonb),
 ('ai', false, 'Gemini models and generation parameters', $json$
 {
-  "model": "gemini-2.5-flash",
+  "model": "gemini-3.5-flash",
   "embeddingModel": "gemini-embedding-001",
   "temperature": 0.3,
   "maxOutputTokens": 8192,
@@ -73,8 +73,14 @@ $json$::jsonb),
   "enableEmbeddings": true
 }
 $json$::jsonb),
-('bot', false, 'Meeting bot behaviour and Google Meet DOM selectors (hot-fixable)', $json$
+('bot', false, 'Meeting bot provider, behaviour and Google Meet DOM selectors (hot-fixable)', $json$
 {
+  "provider": "self_hosted",
+  "recall": {
+    "transcription": "recallai_streaming",
+    "languageCode": "auto",
+    "deleteMediaAfterImport": true
+  },
   "botName": "Remi Notetaker",
   "joinBeforeMinutes": 1,
   "waitingRoomTimeoutMinutes": 10,
@@ -97,7 +103,7 @@ $json$::jsonb),
     "participantCount": "[data-avatar-count], .uGOf1d",
     "inCallIndicator": "button[aria-label='Leave call']",
     "waitingRoomText": "Asking to join|Please wait until a meeting host brings you into the call|You'll join the call when someone lets you in",
-    "deniedText": "You can't join this call|Someone in the call denied your request|You've been removed",
+    "deniedText": "You can't join this video call|You can't join this call|Someone in the call denied your request|You've been removed",
     "endedText": "You left the meeting|The call has ended|Return to home screen|You've been removed from the meeting"
   }
 }
@@ -251,13 +257,13 @@ $json$::jsonb);
 -- -----------------------------------------------------------------------------
 insert into public.content_sections (page, type, name, platform, sort_order, content) values
 ('mobile_onboarding', 'onboarding_slide', 'Slide 1', 'mobile', 0, $json$
-{ "title": "Meetings, remembered", "description": "Remi joins your Google Meet calls and writes the notes for you.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/cld-sample-4.jpg", "backgroundColor": "#EEF0FF" }
+{ "title": "Your friend who remembers everything", "description": "Talk, type or record. I keep the important bits so you don't have to.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/cld-sample-4.jpg", "backgroundColor": "#EEF0FF" }
 $json$::jsonb),
 ('mobile_onboarding', 'onboarding_slide', 'Slide 2', 'mobile', 1, $json$
-{ "title": "Every promise tracked", "description": "Action items and commitments are captured automatically with due dates.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/kitchen-bar.jpg", "backgroundColor": "#E8FBF6" }
+{ "title": "Never drop a promise", "description": "I pull reminders and to-dos out of your conversations, meetings and chats.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/kitchen-bar.jpg", "backgroundColor": "#E8FBF6" }
 $json$::jsonb),
 ('mobile_onboarding', 'onboarding_slide', 'Slide 3', 'mobile', 2, $json$
-{ "title": "Reminded at the right time", "description": "Get a nudge before meetings start and before anything is due.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/jazz.jpg", "backgroundColor": "#FFF4E8" }
+{ "title": "Gets you, a little more every day", "description": "English, Hinglish or a mix: I learn your style and grow with you. You stay in control.", "imageUrl": "https://res.cloudinary.com/demo/image/upload/c_fill,w_800,h_800/samples/people/jazz.jpg", "backgroundColor": "#FFF4E8" }
 $json$::jsonb);
 
 -- -----------------------------------------------------------------------------
@@ -287,7 +293,7 @@ insert into public.navigation_items (location, label, href, icon, group_label, r
 ('sidebar', 'Ask Remi', '/ask', 'ask-ai', null, 'askAi', false, 6),
 ('sidebar', 'Settings', '/settings', 'settings', null, null, false, 7),
 -- mobile tabs
-('mobile_tab', 'Home', 'home', 'home', null, null, false, 0),
+('mobile_tab', 'Today', 'home', 'home', null, null, false, 0),
 ('mobile_tab', 'Meetings', 'meetings', 'meetings', null, null, false, 1),
 ('mobile_tab', 'Reminders', 'reminders', 'reminders', null, 'reminders', false, 2),
 ('mobile_tab', 'Ask', 'ask', 'ask-ai', null, 'askAi', false, 3),
@@ -396,6 +402,6 @@ insert into public.notification_templates (key, name, title_template, body_templ
 ('report_ready', 'Report ready', 'Your notes for "{{meetingTitle}}" are ready', '{{actionItemCount}} action items · {{summaryPreview}}', 'Meeting report: {{meetingTitle}}', E'{{summary}}\n\n[Open the full report]({{url}})', '{push,in_app,email}'),
 ('action_item_due', 'Action item due', 'Due {{dueRelative}}: {{title}}', '{{meetingTitle}}', 'Reminder: {{title}}', 'This action item from **{{meetingTitle}}** is due {{dueRelative}}.', '{push,in_app,email}'),
 ('reminder', 'Reminder', '{{title}}', '{{body}}', 'Reminder: {{title}}', '{{body}}', '{push,in_app}'),
-('daily_digest', 'Daily digest', 'Your day: {{meetingCount}} meetings, {{actionItemCount}} open items', '{{firstMeeting}}', 'Your Remi digest for {{date}}', '{{digestMarkdown}}', '{push,email}'),
+('daily_digest', 'Daily digest', 'Your day: {{meetingCount}} meetings, {{actionItemCount}} open items', '{{firstMeeting}}', 'Your Remi digest for {{date}}', '{{digestMarkdown}}', '{email}'),
 ('bot_failed', 'Bot could not join', 'Could not join "{{meetingTitle}}"', '{{reason}}', 'Remi could not join {{meetingTitle}}', 'Remi could not join **{{meetingTitle}}**: {{reason}}', '{push,in_app}')
 on conflict (key) do nothing;

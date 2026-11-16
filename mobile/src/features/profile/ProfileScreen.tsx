@@ -25,6 +25,7 @@ import { openMail } from '@/utils/links';
 import { safeUrl } from '@/utils/safeUrl';
 import { toast } from '@/utils/toast';
 
+import { AboutYou, DailyRhythmSettings } from './AboutYou';
 import { CalendarIntegration } from './CalendarIntegration';
 import { NotetakerSettings } from './NotetakerSettings';
 import { NotificationSettings } from './NotificationSettings';
@@ -137,6 +138,8 @@ export function ProfileScreen() {
               </View>
             </Card>
 
+            <AboutYou />
+            <DailyRhythmSettings settings={settings} onChange={onChange} />
             <NotetakerSettings settings={settings} onChange={onChange} />
             <NotificationSettings settings={settings} onChange={onChange} />
             {isEnabled('calendarSync') ? <CalendarIntegration /> : null}

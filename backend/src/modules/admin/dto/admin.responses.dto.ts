@@ -308,3 +308,30 @@ export class AuditLog implements Contract.AuditLog {
   @ApiDateTime() createdAt: string;
   admin: AuditActor | null;
 }
+
+export class RecallProviderStatus {
+  /** RECALL_API_KEY is set on the server (the value is never returned). */
+  @ApiProperty() apiKeyConfigured: boolean;
+  /** RECALL_WEBHOOK_SECRET is set on the server (the value is never returned). */
+  @ApiProperty() webhookSecretConfigured: boolean;
+  @ApiProperty({ enum: ['us-east-1', 'us-west-2', 'eu-central-1', 'ap-northeast-1'] }) region: string;
+  /** Paste into Recall.ai → Webhooks → Add endpoint. */
+  @ApiProperty({ example: 'https://api.example.com/api/v1/webhooks/recall' }) webhookUrl: string;
+  @ApiProperty({ example: 'https://us-east-1.recall.ai/dashboard' }) dashboardUrl: string;
+}
+
+export class SelfHostedProviderStatus {
+  @ApiProperty({ enum: ['puppeteer', 'simulate'] }) mode: string;
+  /** BOT_PROFILE_DIR is set: the runner uses a persistent Chromium profile (signed-in bot account). */
+  @ApiProperty() persistentProfile: boolean;
+}
+
+export class BotProviderStatus {
+  @ApiProperty({ type: RecallProviderStatus }) recall: RecallProviderStatus;
+  @ApiProperty({ type: SelfHostedProviderStatus }) selfHosted: SelfHostedProviderStatus;
+}
+
+export class RecallConnectionTest {
+  @ApiProperty() ok: boolean;
+  @ApiProperty({ example: 'Recall.ai accepted the API key (us-east-1).' }) message: string;
+}

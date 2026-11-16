@@ -197,6 +197,50 @@ export interface UserSettings {
   digestHour: number;
   emailNotifications: boolean;
   pushNotifications: boolean;
+  /** Daily rhythm, local "HH:MM" in the user's time zone. */
+  wakeTime: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  checkinTime: string;
+  /** When the user acknowledged the one-time "let people know when you record" note. */
+  recordingConsentAt: ISODate | null;
+  /** Push the morning brief at `wakeTime`. */
+  morningBrief: boolean;
+  /** Ask "how did today go?" at `checkinTime`. */
+  eveningCheckin: boolean;
+}
+
+// ---------- Companion profile and onboarding ----------
+export type ProfileStatus = 'pending' | 'completed' | 'skipped';
+export type LanguageStyle = 'english' | 'hinglish' | 'mixed';
+
+export interface UserProfile {
+  status: ProfileStatus;
+  preferredName: string | null;
+  occupation: string | null;
+  currentFocus: string | null;
+  communicationStyle: string | null;
+  languageStyle: LanguageStyle;
+  tone: string | null;
+  facts: string[];
+  summary: string | null;
+  /** 1 polite and curious, 2 casual, 3 close friend (grows with warmth, updated nightly). */
+  relationshipStage: number;
+  updatedAt: ISODate | null;
+}
+
+export interface OnboardingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OnboardingChatReply {
+  reply: string;
+  /** 0-based index of the question the reply asks; equals `totalSteps` once the chat is complete. */
+  step: number;
+  totalSteps: number;
+  done: boolean;
+  languageStyle: LanguageStyle;
 }
 
 export interface AuthTokens {
@@ -322,7 +366,7 @@ export interface ActionItem {
 export const REMINDER_CHANNELS = ['push', 'in_app', 'email'] as const;
 export type ReminderChannel = (typeof REMINDER_CHANNELS)[number];
 export type ReminderType = 'meeting_upcoming' | 'action_item_due' | 'commitment' | 'custom';
-export type ReminderStatus = 'pending' | 'sent' | 'cancelled' | 'failed';
+export type ReminderStatus = 'pending' | 'sent' | 'done' | 'cancelled' | 'failed';
 
 export interface Reminder {
   id: string;
@@ -337,12 +381,112 @@ export interface Reminder {
   meetingTitle: string | null;
   actionItemId: string | null;
   sentAt: ISODate | null;
+  doneAt: ISODate | null;
   createdAt: ISODate;
 }
 
 // ---------- Notifications ----------
 export type NotificationType =
-  'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder' | 'daily_digest' | 'bot_failed' | 'broadcast';
+  | 'meeting_upcoming'
+  | 'report_ready'
+  | 'action_item_due'
+  | 'reminder'
+  | 'daily_digest'
+  | 'bot_failed'
+  | 'broadcast'
+  | 'welcome'
+  | 'morning_brief'
+  | 'evening_checkin'
+  | 'reminder_followup'
+  | 'companion_nudge'
+  | 'weekly_recap';
+
+// ---------- Daily rhythm: Today, evening check-in, proactive nudges, weekly recap ----------
+export interface CompanionMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  at: ISODate;
+}
+
+export type CheckinStatus = 'prompted' | 'replied' | 'completed' | 'missed';
+
+export interface DailyCheckin {
+  id: string;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  status: CheckinStatus;
+  /** "light" after a missed check-in: no guilt, a softer ask. */
+  tone: 'normal' | 'light';
+  messages: CompanionMessage[];
+  /** 1..5, extracted when the check-in wraps up. */
+  mood: number | null;
+  energy: number | null;
+  wins: string[];
+  summary: string | null;
+  completedAt: ISODate | null;
+}
+
+export interface CheckinReply {
+  checkin: DailyCheckin;
+  reply: string;
+  /** True when the friend wrapped up (tomorrow's plan included). */
+  done: boolean;
+}
+
+export type NudgeStatus = 'scheduled' | 'sent' | 'dismissed' | 'cancelled';
+
+export interface CompanionNudge {
+  id: string;
+  text: string;
+  status: NudgeStatus;
+  sentAt: ISODate | null;
+  messages: CompanionMessage[];
+}
+
+export interface NudgeReply {
+  nudge: CompanionNudge;
+  reply: string;
+}
+
+export type TodayCheckinStatus = 'off' | 'upcoming' | 'due' | CheckinStatus;
+
+export interface TodayBrief {
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  languageStyle: LanguageStyle;
+  /** "Good morning, Asha" in the user's vibe. */
+  greeting: string;
+  /** One line about the day ("3 meetings today, first at 10:00 AM."). */
+  headline: string;
+  counts: { meetings: number; reminders: number; openItems: number };
+  /** Today's meetings (local day), earliest first. */
+  meetings: MeetingListItem[];
+  /** Today's reminders that still need the user (pending, or sent and not done). */
+  reminders: Reminder[];
+  /** Open to-dos and promises, soonest due first. */
+  openItems: ActionItem[];
+  checkin: { time: string; status: TodayCheckinStatus; mood: number | null };
+  /** Today's proactive nudge, once sent and until dismissed. */
+  nudge: CompanionNudge | null;
+}
+
+export interface MoodPoint {
+  date: string;
+  mood: number | null;
+  energy: number | null;
+}
+
+export interface WeeklyRecap {
+  /** Monday and Sunday of the week, YYYY-MM-DD. */
+  weekStart: string;
+  weekEnd: string;
+  headline: string;
+  meetings: { count: number; hours: number; highlights: { id: string; title: string; startAt: ISODate }[] };
+  promises: { kept: number; remindersDone: number; stillOpen: number };
+  mood: { days: MoodPoint[]; average: number | null; trend: 'up' | 'down' | 'flat' | null; checkins: number };
+  people: string[];
+  createdAt: ISODate;
+}
 
 export interface AppNotification {
   id: string;
@@ -463,7 +607,15 @@ export interface AdminMeetingListItem extends MeetingListItem {
   failureReason: string | null;
 }
 
-export const QUEUE_NAMES = ['calendar-sync', 'meeting-bot', 'ai-processing', 'notifications', 'digest'] as const;
+export const QUEUE_NAMES = [
+  'calendar-sync',
+  'meeting-bot',
+  'bot-events',
+  'ai-processing',
+  'notifications',
+  'digest',
+  'companion',
+] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 export interface QueueStats {

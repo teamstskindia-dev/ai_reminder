@@ -30,6 +30,20 @@ export class UserSettings implements Contract.UserSettings {
   @ApiInteger({ minimum: 0, maximum: 23 }) digestHour: number;
   emailNotifications: boolean;
   pushNotifications: boolean;
+  /** Local wake time, "HH:MM" (24h). */
+  wakeTime: string;
+  /** Start of quiet hours, "HH:MM" (24h). */
+  quietHoursStart: string;
+  /** End of quiet hours, "HH:MM" (24h). */
+  quietHoursEnd: string;
+  /** Local time of the evening check-in, "HH:MM" (24h). */
+  checkinTime: string;
+  /** When the user acknowledged the one-time recording-consent note. */
+  @ApiDateTime() recordingConsentAt: string | null;
+  /** Push the morning brief at `wakeTime`. */
+  morningBrief: boolean;
+  /** Ask "how did today go?" at `checkinTime`. */
+  eveningCheckin: boolean;
 }
 
 export class AuthTokens implements Contract.AuthTokens {
@@ -48,7 +62,7 @@ export class TokensResult {
 export class SignInResult {
   user: User;
   tokens: AuthTokens;
-  /** True the first time this Google account signs in. */
+  /** True when this sign-in created the account. */
   isNewUser: boolean;
 }
 

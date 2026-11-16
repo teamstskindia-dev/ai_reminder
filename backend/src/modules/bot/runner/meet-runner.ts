@@ -6,7 +6,7 @@ import { launch, TargetType } from 'puppeteer-core';
 import type { Browser, HTTPRequest, Page, Target } from 'puppeteer-core';
 import { AppConfig } from '../../../config/app-config';
 import { causeChain } from '../../../common/errors/app.exception';
-import { isJoinableMeetUrl } from '../../../common/validation/safe-url';
+import { isJoinableMeetUrl, normalizeMeetUrl } from '../../../common/validation/safe-url';
 import type { BotSettings } from '../../content/settings.schemas';
 import type { BotSession, SessionOutcome } from './bot-session';
 import { BotStep, BotStepError, failureReasonFrom, runStep } from './bot-step-error';
@@ -25,6 +25,10 @@ export interface RunContext {
 
 const BINDING = '__remiCaption';
 const POLL_MS = 2000;
+/** Chromium's single-instance locks; stale copies after a crash would stop the persistent profile from opening. */
+const CHROME_LOCK_FILES = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+/** Google sets these only for a signed-in account. */
+const GOOGLE_SESSION_COOKIES = new Set(['SID', '__Secure-1PSID', '__Secure-3PSID']);
 const NAVIGATION_TIMEOUT_MS = 60_000;
 const JOIN_BUTTON_TIMEOUT_MS = 2 * 60_000;
 const MISSING_IN_CALL_MS = 15_000;
@@ -48,8 +52,10 @@ const CHROME_ARGS = [
  *
  * - Every selector/text comes from `app_settings.bot.selectors` (hot-fixable from the admin panel).
  * - Hardening: only strict Meet URLs are opened; main-frame navigations outside Google are aborted;
- *   popups are closed; downloads are denied; each job gets a fresh temporary profile.
- * - No stealth/anti-detection tricks: the bot joins as a named guest and the host admits it.
+ *   popups are closed; downloads are denied.
+ * - Profile: with BOT_PROFILE_DIR the bot uses that persistent profile, signed in to its own Google account
+ *   (Meet refuses signed-out automated guests); otherwise each job gets a fresh temporary profile.
+ * - No stealth/anti-detection tricks: the bot joins as itself and the host admits it.
  * - Logs never contain caption text, speaker names or the bot's display name.
  */
 @Injectable()
@@ -66,8 +72,18 @@ export class MeetRunner {
       if (!isJoinableMeetUrl(ctx.meetingUrl)) throw new BotStepError('navigate', 'invalid Google Meet URL');
 
       const page = await this.timed(meetingId, 'navigate', async () => {
-        const profileDir = await mkdtemp(join(tmpdir(), 'remi-bot-'));
-        res.profileDir = profileDir;
+        const persistentProfile = this.config.bot.profileDir;
+        let profileDir: string;
+        if (persistentProfile) {
+          // Concurrency is 1 with a persistent profile (env validation), so any lock left here is from a crash.
+          await Promise.all(
+            CHROME_LOCK_FILES.map((f) => rm(join(persistentProfile, f), { force: true }).catch(() => undefined)),
+          );
+          profileDir = persistentProfile;
+        } else {
+          profileDir = await mkdtemp(join(tmpdir(), 'remi-bot-'));
+          res.profileDir = profileDir; // only temporary profiles are deleted afterwards
+        }
         const browser = await runStep('navigate', 'browser failed to start', () =>
           launch({
             executablePath: this.config.bot.chromePath,
@@ -78,7 +94,7 @@ export class MeetRunner {
           }),
         );
         res.browser = browser;
-        return this.openMeeting(browser, ctx.meetingUrl, meetingId);
+        return this.openMeeting(browser, normalizeMeetUrl(ctx.meetingUrl) ?? ctx.meetingUrl, meetingId);
       });
 
       const admitted = await this.timed(meetingId, 'admission', () => this.joinCall(page, ctx));
@@ -187,6 +203,16 @@ export class MeetRunner {
     while (!session.stopRequested) {
       if (await this.exists(page, sel.inCallIndicator)) return true;
       if (await this.bodyMatches(page, sel.deniedText, sel.captionsRegion)) {
+        if (!joinClicked) {
+          // Meet's "You can't join this video call" page: shown to signed-out automated guests before any join
+          // button exists. Not a host decision, so say what actually fixes it.
+          throw new BotStepError(
+            'join',
+            (await this.isSignedInToGoogle(page))
+              ? 'Google Meet refused the bot account (check the meeting allows guests from outside the organization)'
+              : 'Google Meet refused the bot because it is not signed in to a Google account (run the one-time bot sign-in: docs/DEPLOYMENT.md)',
+          );
+        }
         throw new BotStepError('admission', 'Host denied the request to join');
       }
 
@@ -227,6 +253,16 @@ export class MeetRunner {
       await session.sleep(POLL_MS);
     }
     return false;
+  }
+
+  /** True when the browser holds a Google session (the bot profile was signed in with `bot-login`). Never logs values. */
+  private async isSignedInToGoogle(page: Page): Promise<boolean> {
+    try {
+      const cookies = await page.browser().cookies();
+      return cookies.some((c) => /(^|\.)google\.com$/.test(c.domain) && GOOGLE_SESSION_COOKIES.has(c.name));
+    } catch {
+      return false;
+    }
   }
 
   private async startCaptions(page: Page, ctx: RunContext): Promise<void> {

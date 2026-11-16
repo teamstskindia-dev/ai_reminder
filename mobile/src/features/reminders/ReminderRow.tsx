@@ -1,4 +1,4 @@
-import { Bell, EllipsisVertical, Mail, MessageSquare, Sparkles } from 'lucide-react-native';
+import { Bell, Circle, EllipsisVertical, Mail, MessageSquare, Sparkles } from 'lucide-react-native';
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -13,10 +13,12 @@ export interface ReminderRowProps {
   reminder: Reminder;
   onPress?: (reminder: Reminder) => void;
   onMenu?: (reminder: Reminder) => void;
+  /** Shows a round "done" button (Today screen). */
+  onDone?: (reminder: Reminder) => void;
   showDay?: boolean;
 }
 
-function ReminderRowBase({ reminder, onPress, onMenu, showDay = false }: ReminderRowProps) {
+function ReminderRowBase({ reminder, onPress, onMenu, onDone, showDay = false }: ReminderRowProps) {
   const theme = useTheme();
   const subtitle = reminder.body || reminder.meetingTitle;
   const fromAi = reminder.source === 'ai';
@@ -58,6 +60,17 @@ function ReminderRowBase({ reminder, onPress, onMenu, showDay = false }: Reminde
           </View>
         </View>
       </View>
+      {onDone ? (
+        <Touchable
+          accessibilityRole="button"
+          accessibilityLabel={`Mark "${reminder.title}" done`}
+          rippleBorderless
+          onPress={() => onDone(reminder)}
+          style={styles.more}
+        >
+          <Circle size={22} color={theme.colors.primary} />
+        </Touchable>
+      ) : null}
       {onMenu ? (
         <Touchable
           accessibilityRole="button"

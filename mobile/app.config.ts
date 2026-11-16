@@ -33,6 +33,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     buildNumber: String(BUILD_NUMBER),
     supportsTablet: true,
     icon: './assets/images/icon.png',
+    // Sign in with Apple (required by App Store guideline 4.8 when Google sign-in is offered).
+    usesAppleSignIn: true,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       // HTTPS only. Development builds may reach a backend on localhost / the LAN; never arbitrary loads.
@@ -57,7 +59,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     blockedPermissions: [
       'android.permission.READ_EXTERNAL_STORAGE',
       'android.permission.WRITE_EXTERNAL_STORAGE',
-      'android.permission.RECORD_AUDIO',
       'android.permission.CAMERA',
       'android.permission.SYSTEM_ALERT_WINDOW',
     ],
@@ -79,6 +80,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // No biometrics are used (no Face ID usage string); backups are disabled app-wide (allowBackup: false).
     ['expo-secure-store', { faceIDPermission: false, configureAndroidBackup: false }],
     '@react-native-community/datetimepicker',
+    'expo-apple-authentication',
+    [
+      'expo-audio',
+      {
+        // Voice answers in the get-to-know-you chat now; tap-to-record conversations next.
+        microphonePermission: 'Allow $(PRODUCT_NAME) to use the microphone so you can talk to your friend and record conversations.',
+        recordAudioAndroid: true,
+        enableBackgroundRecording: false,
+        enableBackgroundPlayback: false,
+      },
+    ],
     [
       'expo-notifications',
       {

@@ -4,17 +4,19 @@ import type { Job, Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { AppConfig } from '../../../config/app-config';
 import { causeChain } from '../../../common/errors/app.exception';
-import { isJoinableMeetUrl } from '../../../common/validation/safe-url';
+import { isJoinableMeetUrl, normalizeMeetUrl } from '../../../common/validation/safe-url';
 import type { MeetingRow } from '../../../infra/prisma/models';
 import { BaseProcessor, PermanentJobError } from '../../../infra/queue/base.processor';
 import { upsertJob } from '../../../infra/queue/job-utils';
 import { AiProcessJob, BotJoinJob, JOB, JobId, QUEUE } from '../../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../../infra/redis/redis.constants';
+import type { BotSettings } from '../../content/settings.schemas';
 import { SettingsService } from '../../content/settings.service';
 import { MeetingEventsService } from '../../meetings/meeting-events.service';
 import { MeetingsRepository, TranscriptRepository } from '../../meetings/meetings.repository';
 import { NotificationProducer } from '../../notifications/notification-producer.service';
 import { UsersRepository } from '../../users/users.repository';
+import { RecallDispatcher } from '../recall/recall-dispatcher.service';
 import { BotSession, SessionOutcome } from './bot-session';
 import { failureReasonFrom, formatFailureReason } from './bot-step-error';
 import { MeetRunner } from './meet-runner';
@@ -26,7 +28,8 @@ const MAX_TRACKED_NOTIFICATIONS = 1000;
 
 /**
  * `meeting-bot` consumer (bot process only). One job = one meeting: claims the meeting
- * (scheduled → joining), runs the Puppeteer or simulated runner, then finalises the session
+ * (scheduled → joining), then either hands it to Recall.ai (provider `recall`: create the bot and
+ * return; webhooks drive the rest) or runs the Puppeteer/simulated runner and finalises the session
  * (processing + AI job, or failed + one `bot_failed` notification).
  */
 @Processor(QUEUE.MEETING_BOT)
@@ -45,6 +48,7 @@ export class MeetingBotProcessor extends BaseProcessor<BotJoinJob> implements On
     private readonly notifications: NotificationProducer,
     private readonly meetRunner: MeetRunner,
     private readonly simulateRunner: SimulateRunner,
+    private readonly recall: RecallDispatcher,
     @Inject(REDIS) private readonly redis: Redis,
     @InjectQueue(QUEUE.AI) private readonly aiQueue: Queue,
   ) {
@@ -61,6 +65,9 @@ export class MeetingBotProcessor extends BaseProcessor<BotJoinJob> implements On
     const meeting = await this.meetings.findById(meetingId);
     if (!meeting) throw new PermanentJobError('meeting no longer exists');
 
+    if (LIVE_STATUSES.includes(meeting.status) && meeting.botProvider === 'recall') {
+      return 'skipped: a Recall.ai bot is handling this meeting';
+    }
     if (LIVE_STATUSES.includes(meeting.status) && !this.active.has(meeting.id)) {
       // The bot process that owned this meeting died (stalled job re-delivered): no automatic re-join.
       return this.recoverOrphan(meeting);
@@ -77,21 +84,29 @@ export class MeetingBotProcessor extends BaseProcessor<BotJoinJob> implements On
       return 'skipped: meeting already ended';
     }
 
+    const bot = await this.settings.get('bot');
     const claimed = await this.meetings.updateIfStatus(meeting.id, ['scheduled'], {
       status: 'joining',
       failureReason: null,
+      botProvider: bot.provider,
+      // A re-join detaches any earlier provider bot: its late webhooks no longer match this meeting.
+      externalBotId: null,
     });
     if (!claimed) return 'skipped: already claimed';
     this.notifiedFailures.delete(claimed.id);
     this.events.emit(claimed);
-    this.logger.log({ meetingId: claimed.id, status: 'joining', mode: this.config.bot.mode }, 'meeting status changed');
+    this.logger.log(
+      { meetingId: claimed.id, status: 'joining', provider: bot.provider, mode: this.config.bot.mode },
+      'meeting status changed',
+    );
 
-    const [bot, userSettings, maxSeq] = await Promise.all([
-      this.settings.get('bot'),
+    const [userSettings, maxSeq] = await Promise.all([
       this.users.getSettings(claimed.userId),
       this.transcripts.maxSeq(claimed.id),
     ]);
     const botName = userSettings.botName?.trim() || bot.botName;
+    if (bot.provider === 'recall') return this.dispatchToRecall(claimed, botName, bot);
+
     const session = new BotSession({
       meeting: claimed,
       events: this.events,
@@ -163,6 +178,25 @@ export class MeetingBotProcessor extends BaseProcessor<BotJoinJob> implements On
     for (const { session } of this.active.values()) session.requestStop('shutdown');
     const all = Promise.all([...this.active.values()].map((a) => a.done));
     await Promise.race([all, new Promise((r) => setTimeout(r, SHUTDOWN_GRACE_MS))]);
+  }
+
+  /** Provider `recall`: create the Recall.ai bot and return; its webhooks (worker) move the meeting on. */
+  private async dispatchToRecall(meeting: MeetingRow, botName: string, bot: BotSettings): Promise<string> {
+    try {
+      const recallBotId = await this.recall.dispatch({
+        meetingId: meeting.id,
+        meetingUrl: normalizeMeetUrl(meeting.meetingUrl) ?? String(meeting.meetingUrl),
+        botName,
+        bot,
+      });
+      await this.meetings.update(meeting.id, { externalBotId: recallBotId });
+      return 'dispatched to Recall.ai';
+    } catch (err) {
+      const reason = failureReasonFrom(err, 'join');
+      this.logger.warn({ meetingId: meeting.id, causes: causeChain(err) }, 'recall dispatch failed');
+      await this.failMeeting(meeting, reason);
+      return `failed: ${reason}`;
+    }
   }
 
   /** A live meeting without a running session: keep what was captured, never re-join automatically. */

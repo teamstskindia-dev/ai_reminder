@@ -65,4 +65,4 @@ Pull requests run typecheck, lint, tests and builds for the changed apps. Setup,
 | Recording uploads               | Supabase project (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)        |
 | Admin media uploads             | Real Cloudinary keys (dev uses the public `demo` cloud; pasting URLs always works) |
 | Push notifications              | EAS project + APNs (iOS) / FCM v1 (Android) credentials, development build |
-| Email                           | SMTP settings + `notifications.emailEnabled` in the admin panel       |
+| Email (welcome email, digests, email sign-in codes) | SMTP settings + `notifications.emailEnabled` in the admin panel. Without SMTP in development, email sign-in codes are printed in the API log. |

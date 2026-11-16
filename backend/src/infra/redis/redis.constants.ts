@@ -19,10 +19,15 @@ export function redisOptionsFromUrl(url: string): RedisOptions {
 export const RedisKeys = {
   otc: (code: string) => `otc:${code}`,
   googlePkce: (nonce: string) => `oauth-pkce:${nonce}`,
+  /** Keyed by sha256(email) so addresses never appear in key names. */
+  emailCode: (emailHash: string) => `email-code:${emailHash}`,
+  emailCodeRate: (emailHash: string) => `email-code-rate:${emailHash}`,
   loginFail: (kind: 'ip' | 'email', id: string) => `login-fail:${kind}:${id}`,
   loginLock: (kind: 'ip' | 'email', id: string) => `login-lock:${kind}:${id}`,
   botLeave: (meetingId: string) => `bot-leave:${meetingId}`,
   aiQuota: (userId: string, day: string) => `quota:ai:${userId}:${day}`,
+  /** Exactly-once marker for a daily-rhythm job (morning brief, check-in, ...) per user and local day. */
+  rhythm: (kind: string, userId: string, day: string) => `rhythm:${kind}:${userId}:${day}`,
   publicConfig: (platform: string) => `cfg:public:${platform}`,
   sections: (page: string, platform: string) => `cfg:sections:${page}:${platform}`,
   page: (slug: string) => `cfg:page:${slug}`,

@@ -1,5 +1,6 @@
 import type { ErrorBoundaryProps } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { Icon } from '@/components/Icon';
@@ -12,6 +13,9 @@ import { useTheme } from '@/theme/ThemeProvider';
  */
 export default function TabsLayout() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  // Keep the tabs clear of the phone's navigation buttons, even on devices that report no inset.
+  const bottomPad = Math.max(insets.bottom, 16);
   const visible = useVisibleTabs();
   const visibleRoutes = new Set(visible.map((t) => t.route));
   const hidden = TAB_ROUTES.filter((route) => !visibleRoutes.has(route));
@@ -26,6 +30,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
+          height: 60 + bottomPad,
+          paddingTop: 6,
+          paddingBottom: bottomPad,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         sceneStyle: { backgroundColor: theme.colors.background },
