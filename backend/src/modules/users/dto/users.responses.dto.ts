@@ -40,6 +40,10 @@ export class UserSettings implements Contract.UserSettings {
   checkinTime: string;
   /** When the user acknowledged the one-time recording-consent note. */
   @ApiDateTime() recordingConsentAt: string | null;
+  /** Push the morning brief at `wakeTime`. */
+  morningBrief: boolean;
+  /** Ask "how did today go?" at `checkinTime`. */
+  eveningCheckin: boolean;
 }
 
 export class AuthTokens implements Contract.AuthTokens {

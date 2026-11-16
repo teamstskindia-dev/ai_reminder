@@ -4,15 +4,23 @@ import { causeChain } from '../../common/errors/app.exception';
 import type { NotificationType, ReminderChannel } from '../../common/types/api.types';
 import { BaseProcessor, PermanentJobError } from '../../infra/queue/base.processor';
 import { upsertJob } from '../../infra/queue/job-utils';
-import { BroadcastJob, JOB, JobId, NotifyJob, QUEUE, ReminderJob } from '../../infra/queue/queue.constants';
+import {
+  BroadcastJob,
+  JOB,
+  JobId,
+  NotifyJob,
+  QUEUE,
+  ReminderFollowUpJob,
+  ReminderJob,
+} from '../../infra/queue/queue.constants';
 import { BroadcastDispatchService } from './broadcast-dispatch.service';
 import { DeliveryService } from './delivery.service';
 import { DigestService } from './digest.service';
 import { ReminderDispatchService } from './reminder-dispatch.service';
 
-type NotificationsJobData = ReminderJob | NotifyJob | BroadcastJob;
+type NotificationsJobData = ReminderJob | ReminderFollowUpJob | NotifyJob | BroadcastJob;
 
-/** `notifications` queue: delayed reminders, template notifications and admin broadcasts. */
+/** `notifications` queue: delayed reminders (and their one follow-up), template notifications and broadcasts. */
 @Processor(QUEUE.NOTIFICATIONS)
 export class NotificationsProcessor extends BaseProcessor<NotificationsJobData> {
   constructor(
@@ -28,6 +36,10 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJobData> 
       case JOB.REMINDER: {
         const data = job.data as ReminderJob;
         return { outcome: await this.reminders.dispatch(data.reminderId, data.remindAt) };
+      }
+      case JOB.REMINDER_FOLLOWUP: {
+        const data = job.data as ReminderFollowUpJob;
+        return { outcome: await this.reminders.followUp(data.reminderId, data.sentAt) };
       }
       case JOB.NOTIFY: {
         const data = job.data as NotifyJob;

@@ -1,4 +1,4 @@
-import { Sparkles, Trash } from 'lucide-react-native';
+import { MoonStar, Sparkles, Sun, Trash } from 'lucide-react-native';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { useDeleteProfile, useProfile } from '@/api/hooks/onboarding';
@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { DateTimeField } from '@/components/ui/DateTimeField';
+import { ListGroup, SwitchRow } from '@/components/ui/ListRow';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Text } from '@/components/ui/Text';
 import { useTheme } from '@/theme/ThemeProvider';
 import { toast } from '@/utils/toast';
 
 const LANGUAGE_LABEL: Record<LanguageStyle, string> = { english: 'English', hinglish: 'Hinglish', mixed: 'English + Hinglish' };
+/** Relationship stage (grows nightly with real conversations). */
+const STAGE_LABEL: Record<number, string> = { 1: 'Getting to know you', 2: 'Friends', 3: 'Close friends' };
 
 /** "What I know about you": the personality profile from the get-to-know-you chat, deletable. */
 export function AboutYou() {
@@ -81,6 +84,7 @@ export function AboutYou() {
             <View style={styles.chips}>
               <Chip label={LANGUAGE_LABEL[p.languageStyle]} tone="brand" />
               {p.tone ? <Chip label={p.tone} tone="accent" /> : null}
+              <Chip label={STAGE_LABEL[p.relationshipStage] ?? STAGE_LABEL[1]} />
             </View>
             <Button label="Forget this" icon={Trash} variant="ghost" size="sm" onPress={confirmForget} loading={remove.isPending} style={styles.forget} />
           </View>
@@ -127,6 +131,22 @@ export function DailyRhythmSettings({ settings, onChange }: { settings: UserSett
           <DateTimeField mode="time" label="Evening check-in" value={toDate(settings.checkinTime)} onChange={(d) => d && onChange({ checkinTime: toHHMM(d) })} />
         </View>
       </Card>
+      <ListGroup>
+        <SwitchRow
+          icon={Sun}
+          title="Morning brief"
+          subtitle="A push at wake-up time with your day at a glance"
+          value={settings.morningBrief}
+          onValueChange={(morningBrief) => onChange({ morningBrief })}
+        />
+        <SwitchRow
+          icon={MoonStar}
+          title="Evening check-in"
+          subtitle="“How did today go?” at check-in time"
+          value={settings.eveningCheckin}
+          onValueChange={(eveningCheckin) => onChange({ eveningCheckin })}
+        />
+      </ListGroup>
     </View>
   );
 }

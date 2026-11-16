@@ -23,6 +23,10 @@ export class RemindersService {
     return Paginated.of(rows.map(toReminder), total, q.page, q.limit);
   }
 
+  async get(userId: string, id: string): Promise<Reminder> {
+    return toReminder(await this.reminders.findForUser(userId, id));
+  }
+
   async upcoming(userId: string, limit = 5): Promise<Reminder[]> {
     return (await this.reminders.upcomingPending(userId, limit)).map(toReminder);
   }
@@ -61,6 +65,8 @@ export class RemindersService {
         data.status = 'pending';
         data.sentAt = null;
         data.failureReason = null;
+        data.doneAt = null;
+        data.followedUpAt = null;
       }
     }
     if (dto.status === 'cancelled') data.status = 'cancelled';
@@ -84,8 +90,21 @@ export class RemindersService {
       status: 'pending',
       sentAt: null,
       failureReason: null,
+      doneAt: null,
+      followedUpAt: null,
     });
     await this.scheduler.schedule(updated);
+    return toReminder(updated);
+  }
+
+  /** Done (from the notification or the app): stops the reminder and closes a linked to-do. Idempotent. */
+  async done(userId: string, id: string): Promise<Reminder> {
+    const current = await this.reminders.findForUser(userId, id);
+    if (current.status === 'done') return toReminder(current);
+    if (current.status === 'cancelled') throw AppException.conflict('Cancelled reminders cannot be completed');
+    await this.scheduler.unschedule(id);
+    const updated = await this.reminders.update(id, { status: 'done', doneAt: new Date() });
+    if (current.actionItemId) await this.cancelMany(await this.reminders.completeActionItem(current.actionItemId));
     return toReminder(updated);
   }
 

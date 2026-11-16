@@ -7,7 +7,7 @@ import type { ActionItem, ActionItemStatus, CreateActionItemInput, UpdateActionI
 
 import { nextPageParam, PAGE_SIZE } from './pagination';
 
-const AFFECTED = [qk.actionItems.all, qk.dashboard, qk.meetings.details] as const;
+const AFFECTED = [qk.actionItems.all, qk.dashboard, qk.today, qk.meetings.details] as const;
 
 export function useActionItemsInfinite(status: ActionItemStatus | 'all') {
   const query = { status, limit: PAGE_SIZE };
@@ -25,6 +25,7 @@ function useInvalidateActionItems() {
     Promise.all([
       qc.invalidateQueries({ queryKey: qk.actionItems.all }),
       qc.invalidateQueries({ queryKey: qk.dashboard }),
+      qc.invalidateQueries({ queryKey: qk.today }),
       qc.invalidateQueries({ queryKey: qk.reminders.all }),
       meetingId ? qc.invalidateQueries({ queryKey: qk.meetings.detail(meetingId) }) : Promise.resolve(),
     ]);

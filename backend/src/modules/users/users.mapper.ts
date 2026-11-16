@@ -39,6 +39,8 @@ export function toUserSettings(row: UserSettingsRow): UserSettings {
     quietHoursEnd: row.quietHoursEnd,
     checkinTime: row.checkinTime,
     recordingConsentAt: row.recordingConsentAt?.toISOString() ?? null,
+    morningBrief: row.morningBrief,
+    eveningCheckin: row.eveningCheckin,
   };
 }
 

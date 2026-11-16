@@ -1,14 +1,25 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import type { NotificationType } from '../../common/types/api.types';
+import type { Queue } from 'bullmq';
+import type { LanguageStyle, NotificationType } from '../../common/types/api.types';
 import { formatTime, relativeDue } from '../../common/utils/time.util';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { addJob } from '../../infra/queue/job-utils';
+import { JOB, JobId, QUEUE, ReminderFollowUpJob } from '../../infra/queue/queue.constants';
 import { RealtimeEmitter } from '../../infra/realtime/realtime-emitter.service';
+import { followUpPush } from '../companion/companion.copy';
+import { inQuietHours, localMinutes } from '../companion/rhythm.util';
 import { SettingsService } from '../content/settings.service';
 import { normalizeChannels, toReminder } from '../reminders/reminders.mapper';
 import { RemindersRepository } from '../reminders/reminders.repository';
 import { DeliveryService } from './delivery.service';
 
 export type ReminderOutcome = 'sent' | 'skipped';
+
+/** Push category registered by the app: Done / Snooze buttons on the notification. */
+export const REMINDER_CATEGORY = 'reminder';
+/** An ignored reminder gets one gentle follow-up this long after it fired (user-flow §03). */
+export const FOLLOW_UP_DELAY_MS = 2 * 3600_000;
 
 /** Fires one reminder: re-reads the row (source of truth), renders the template and delivers it. */
 @Injectable()
@@ -21,6 +32,7 @@ export class ReminderDispatchService {
     private readonly delivery: DeliveryService,
     private readonly settings: SettingsService,
     private readonly realtime: RealtimeEmitter,
+    @InjectQueue(QUEUE.NOTIFICATIONS) private readonly queue: Queue,
   ) {}
 
   async dispatch(reminderId: string, scheduledFor: string): Promise<ReminderOutcome> {
@@ -90,6 +102,7 @@ export class ReminderDispatchService {
       // System reminders follow the admin-managed template channels; user/AI reminders their own.
       channels: reminder.source === 'system' ? undefined : normalizeChannels(reminder.channels),
       fallback: { title: reminder.title, body: reminder.body },
+      ...(type === 'meeting_upcoming' ? {} : { categoryId: REMINDER_CATEGORY }),
       data: {
         reminderId: reminder.id,
         ...(reminder.meetingId ? { meetingId: reminder.meetingId } : {}),
@@ -98,6 +111,50 @@ export class ReminderDispatchService {
     });
     const sent = await this.reminders.update(reminder.id, { status: 'sent', sentAt: new Date(), failureReason: null });
     this.realtime.toUser(reminder.userId, 'reminder:fired', toReminder(sent));
+    if (type !== 'meeting_upcoming' && sent.sentAt) {
+      await addJob<ReminderFollowUpJob>(
+        this.queue,
+        JOB.REMINDER_FOLLOWUP,
+        { reminderId: sent.id, sentAt: sent.sentAt.toISOString() },
+        { jobId: JobId.followUp(sent.id, sent.sentAt.getTime()), delay: FOLLOW_UP_DELAY_MS },
+      );
+    }
+    return 'sent';
+  }
+
+  /**
+   * The one gentle follow-up for a reminder the user neither completed nor snoozed. Skipped in quiet
+   * hours: what is still open is raised in the evening check-in instead.
+   */
+  async followUp(reminderId: string, sentAt: string): Promise<ReminderOutcome> {
+    const reminder = await this.reminders.findById(reminderId);
+    if (!reminder || reminder.status !== 'sent' || reminder.followedUpAt) return 'skipped';
+    if (!reminder.sentAt || Math.abs(reminder.sentAt.getTime() - new Date(sentAt).getTime()) > 1000) return 'skipped';
+    const user = await this.prisma.user.findUnique({
+      where: { id: reminder.userId },
+      select: {
+        timezone: true,
+        settings: { select: { quietHoursStart: true, quietHoursEnd: true } },
+        profile: { select: { languageStyle: true } },
+      },
+    });
+    if (!user?.settings) return 'skipped';
+    if (
+      inQuietHours(localMinutes(new Date(), user.timezone), user.settings.quietHoursStart, user.settings.quietHoursEnd)
+    ) {
+      return 'skipped';
+    }
+    const push = followUpPush((user.profile?.languageStyle ?? 'english') as LanguageStyle, reminder.title);
+    await this.delivery.deliver({
+      userId: reminder.userId,
+      type: 'reminder_followup',
+      templateKey: 'reminder_followup',
+      vars: push,
+      fallback: push,
+      categoryId: REMINDER_CATEGORY,
+      data: { reminderId: reminder.id, ...(reminder.actionItemId ? { actionItemId: reminder.actionItemId } : {}) },
+    });
+    await this.reminders.update(reminder.id, { followedUpAt: new Date() });
     return 'sent';
   }
 

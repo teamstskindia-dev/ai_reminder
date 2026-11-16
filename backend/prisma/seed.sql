@@ -293,7 +293,7 @@ insert into public.navigation_items (location, label, href, icon, group_label, r
 ('sidebar', 'Ask Remi', '/ask', 'ask-ai', null, 'askAi', false, 6),
 ('sidebar', 'Settings', '/settings', 'settings', null, null, false, 7),
 -- mobile tabs
-('mobile_tab', 'Home', 'home', 'home', null, null, false, 0),
+('mobile_tab', 'Today', 'home', 'home', null, null, false, 0),
 ('mobile_tab', 'Meetings', 'meetings', 'meetings', null, null, false, 1),
 ('mobile_tab', 'Reminders', 'reminders', 'reminders', null, 'reminders', false, 2),
 ('mobile_tab', 'Ask', 'ask', 'ask-ai', null, 'askAi', false, 3),
@@ -402,6 +402,6 @@ insert into public.notification_templates (key, name, title_template, body_templ
 ('report_ready', 'Report ready', 'Your notes for "{{meetingTitle}}" are ready', '{{actionItemCount}} action items · {{summaryPreview}}', 'Meeting report: {{meetingTitle}}', E'{{summary}}\n\n[Open the full report]({{url}})', '{push,in_app,email}'),
 ('action_item_due', 'Action item due', 'Due {{dueRelative}}: {{title}}', '{{meetingTitle}}', 'Reminder: {{title}}', 'This action item from **{{meetingTitle}}** is due {{dueRelative}}.', '{push,in_app,email}'),
 ('reminder', 'Reminder', '{{title}}', '{{body}}', 'Reminder: {{title}}', '{{body}}', '{push,in_app}'),
-('daily_digest', 'Daily digest', 'Your day: {{meetingCount}} meetings, {{actionItemCount}} open items', '{{firstMeeting}}', 'Your Remi digest for {{date}}', '{{digestMarkdown}}', '{push,email}'),
+('daily_digest', 'Daily digest', 'Your day: {{meetingCount}} meetings, {{actionItemCount}} open items', '{{firstMeeting}}', 'Your Remi digest for {{date}}', '{{digestMarkdown}}', '{email}'),
 ('bot_failed', 'Bot could not join', 'Could not join "{{meetingTitle}}"', '{{reason}}', 'Remi could not join {{meetingTitle}}', 'Remi could not join **{{meetingTitle}}**: {{reason}}', '{push,in_app}')
 on conflict (key) do nothing;

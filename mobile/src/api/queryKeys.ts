@@ -10,6 +10,11 @@ export const qk = {
   me: ['me'] as const,
   profile: ['me', 'profile'] as const,
   dashboard: ['dashboard'] as const,
+  today: ['today'] as const,
+  checkin: ['checkin', 'today'] as const,
+  mood: (days: number) => ['checkin', 'mood', days] as const,
+  nudge: (id: string) => ['nudge', id] as const,
+  recaps: ['recaps'] as const,
   analytics: (range: AnalyticsRange) => ['analytics', range] as const,
   integrations: ['integrations'] as const,
   meetings: {

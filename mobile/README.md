@@ -92,6 +92,23 @@ Progress is saved per user in AsyncStorage, so closing the app mid-setup resumes
 
 The microphone is now used (`expo-audio` plugin in `app.config.ts`), so voice answers need a development build.
 
+## A day with your friend (user-flow §03)
+
+- **Today** (first tab, `src/features/home/HomeScreen.tsx`, `GET /today`): a greeting in the user's style, a one-line
+  brief, today's nudge, the evening check-in card, today's meetings, today's reminders (round button = Done) and open
+  to-dos and promises.
+- **Morning brief**: a push at wake time that opens Today (sent by the worker; on/off in Profile → Daily rhythm).
+- **Reminders**: the push has **Done / Snooze 15 min / In 1 hour** buttons (category `reminder`, registered in
+  `src/features/push/handler.ts`; the buttons open the app, which calls the API). Tapping the notification opens
+  `/reminder/[id]` with Done and Snooze (15 min, 1 hour, tonight, tomorrow). An ignored reminder gets one gentle
+  follow-up, then shows up in the evening check-in.
+- **Evening check-in** (`/checkin`): a short chat by text or voice; the friend reflects, celebrates wins, then wraps
+  up with tomorrow's plan and what is still open, and notes mood and energy.
+- **Proactive nudge** (`/nudge/[id]`): at most one a day, planned by night learning; reply or "Not now".
+- **Weekly recap** (`/recap`): every Sunday evening (email + in-app): highlights, promises kept, mood and people met.
+
+All of this is JavaScript only: no new native modules, so no rebuild of the development build is needed.
+
 ## Builds (EAS)
 
 The repo uses Continuous Native Generation — no committed `ios/` or `android/` folders. Native configuration lives in

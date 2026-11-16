@@ -105,7 +105,9 @@ function clip(value: string | undefined, max: number): string | null {
 }
 
 /** Profile from the raw answers (AI_MOCK mode, or when the AI is unavailable). Never invents anything. */
-export function heuristicProfile(messages: OnboardingChatMessage[]): Omit<UserProfile, 'updatedAt' | 'status'> {
+export function heuristicProfile(
+  messages: OnboardingChatMessage[],
+): Omit<UserProfile, 'updatedAt' | 'status' | 'relationshipStage'> {
   const answers = messages.filter((m) => m.role === 'user').map((m) => m.content);
   const style = answers[3]?.toLowerCase() ?? '';
   const tone = /funny|fun|chill|casual|mast|mazak|banter/.test(style)

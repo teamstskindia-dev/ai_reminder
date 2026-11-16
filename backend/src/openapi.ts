@@ -35,6 +35,10 @@ const TAGS: [string, string][] = [
   ['onboarding', 'First-run get-to-know-you chat, voice answers, the first personality profile and finishing setup.'],
   ['integrations', 'Google Calendar connection and sync.'],
   ['dashboard', 'Home screen aggregate.'],
+  [
+    'companion',
+    'A day with your friend: the Today screen, evening check-ins and the mood timeline, proactive nudges and weekly recaps.',
+  ],
   ['analytics', 'Meeting analytics for a date range.'],
   ['meetings', 'Meetings, transcripts, uploads and the meeting bot.'],
   ['action-items', 'Action items extracted by AI or added by hand.'],

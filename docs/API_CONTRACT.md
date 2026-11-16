@@ -274,6 +274,8 @@ interface UserSettings {
   quietHoursEnd: string;                // "HH:MM"
   checkinTime: string;                  // "HH:MM": evening check-in
   recordingConsentAt: ISODate | null;   // when the one-time "let people know you record" note was acknowledged
+  morningBrief: boolean;                // push the morning brief at wakeTime
+  eveningCheckin: boolean;              // ask "how did today go?" at checkinTime
 }
 
 // The companion's personality profile, built by the first-run get-to-know-you chat.
@@ -287,6 +289,7 @@ interface UserProfile {
   tone: string | null;                  // e.g. "playful"
   facts: string[];
   summary: string | null;
+  relationshipStage: number;            // 1 polite and curious, 2 casual, 3 close friend (grows nightly)
   updatedAt: ISODate | null;
 }
 
@@ -411,19 +414,21 @@ interface Reminder {
   body: string | null;
   remindAt: ISODate;
   channels: ReminderChannel[];
-  status: 'pending' | 'sent' | 'cancelled' | 'failed';
+  status: 'pending' | 'sent' | 'done' | 'cancelled' | 'failed';
   source: 'ai' | 'manual' | 'system';
   meetingId: string | null;
   meetingTitle: string | null;
   actionItemId: string | null;
   sentAt: ISODate | null;
+  doneAt: ISODate | null;               // when the user tapped Done
   createdAt: ISODate;
 }
 
 // ---------- Notifications ----------
 type NotificationType =
   | 'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder'
-  | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome';
+  | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome'
+  | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap';
 
 interface AppNotification {
   id: string;
@@ -432,6 +437,60 @@ interface AppNotification {
   body: string | null;
   data: { meetingId?: string; actionItemId?: string; reminderId?: string; url?: string; [k: string]: unknown };
   readAt: ISODate | null;
+  createdAt: ISODate;
+}
+
+// ---------- Daily rhythm (user-flow §03) ----------
+interface CompanionMessage { role: 'user' | 'assistant'; content: string; at: ISODate }
+
+interface DailyCheckin {
+  id: string;
+  date: string;                         // local YYYY-MM-DD
+  status: 'prompted' | 'replied' | 'completed' | 'missed';
+  tone: 'normal' | 'light';             // light after a missed check-in (no guilt)
+  messages: CompanionMessage[];
+  mood: number | null;                  // 1..5, set at wrap-up
+  energy: number | null;                // 1..5
+  wins: string[];
+  summary: string | null;
+  completedAt: ISODate | null;
+}
+
+interface CheckinReply { checkin: DailyCheckin; reply: string; done: boolean }  // done: wrapped up with tomorrow's plan
+
+interface CompanionNudge {
+  id: string;
+  text: string;
+  status: 'scheduled' | 'sent' | 'dismissed' | 'cancelled';
+  sentAt: ISODate | null;
+  messages: CompanionMessage[];
+}
+
+interface NudgeReply { nudge: CompanionNudge; reply: string }
+
+interface TodayBrief {
+  date: string;                         // local YYYY-MM-DD
+  languageStyle: 'english' | 'hinglish' | 'mixed';
+  greeting: string;                     // "Good morning, Asha"
+  headline: string;                     // "3 meetings today (first at 10:00 AM), 2 reminders and 4 open to-dos."
+  counts: { meetings: number; reminders: number; openItems: number };
+  meetings: MeetingListItem[];          // today's (local day)
+  reminders: Reminder[];                // today's, pending or sent and not done
+  openItems: ActionItem[];              // open to-dos and promises, soonest due first (max 5)
+  checkin: { time: string; status: 'off' | 'upcoming' | 'due' | DailyCheckin['status']; mood: number | null };
+  nudge: CompanionNudge | null;         // today's nudge once sent, until dismissed
+}
+
+interface MoodPoint { date: string; mood: number | null; energy: number | null }
+
+interface WeeklyRecap {
+  weekStart: string;                    // Monday, YYYY-MM-DD
+  weekEnd: string;                      // Sunday
+  headline: string;
+  meetings: { count: number; hours: number; highlights: { id: string; title: string; startAt: ISODate }[] };
+  promises: { kept: number; remindersDone: number; stillOpen: number };
+  mood: { days: MoodPoint[]; average: number | null; trend: 'up' | 'down' | 'flat' | null; checkins: number };
+  people: string[];
   createdAt: ISODate;
 }
 
@@ -637,11 +696,31 @@ To reconnect, the client restarts the `/auth/google` flow.
 
 | Method | Path | Query / Body | Response `data` |
 |--------|------|--------------|-----------------|
-| GET | `/reminders` | `status=pending\|sent\|cancelled\|all` (default `pending`), `from?`, `to?`, `page`, `limit` | `Reminder[]` + `meta` (sorted by `remindAt` asc) |
+| GET | `/reminders` | `status=pending\|sent\|done\|cancelled\|all` (default `pending`), `from?`, `to?`, `page`, `limit` | `Reminder[]` + `meta` (sorted by `remindAt` asc) |
+| GET | `/reminders/:id` | — | `Reminder` |
 | POST | `/reminders` | `{ title; body?; remindAt; channels?: ReminderChannel[]; meetingId?; actionItemId? }` (`remindAt` must be in the future) | `Reminder` |
 | PATCH | `/reminders/:id` | `{ title?; body?; remindAt?; channels?; status?: 'cancelled' }` | `Reminder` |
 | DELETE | `/reminders/:id` | — | `204` |
 | POST | `/reminders/:id/snooze` | `{ minutes: number }` (5..1440) | `Reminder` |
+| POST | `/reminders/:id/done` | — (stops it, no follow-up; marks a linked action item done; idempotent) | `Reminder` |
+
+A fired reminder that is neither done nor snoozed gets **one** gentle follow-up push (`reminder_followup`) 2 hours later, unless that falls in quiet hours. Reminder pushes carry `categoryId: "reminder"`; the app registers that category with **Done / Snooze 15 min / In 1 hour** buttons.
+
+### Today and daily rhythm
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/today` | — | `TodayBrief` |
+| GET | `/checkins/today` | — (starts today's check-in with the friend's opening message on first call) | `DailyCheckin` |
+| POST | `/checkins/today/reply` | `{ text: string }` (1..1000; 20/min). The third reply wraps up automatically | `CheckinReply` |
+| POST | `/checkins/today/finish` | — (needs at least one reply) | `CheckinReply` |
+| GET | `/checkins/mood` | `days=7..90` (default 30) | `MoodPoint[]` (oldest first) |
+| GET | `/nudges/:id` | — | `CompanionNudge` |
+| POST | `/nudges/:id/reply` | `{ text: string }` | `NudgeReply` |
+| POST | `/nudges/:id/dismiss` | — | `204` |
+| GET | `/recaps` | `limit=1..12` (default 4) | `WeeklyRecap[]` (newest first) |
+
+The worker runs a 5-minute tick (`companion` queue) and, in each user's time zone: sends the **morning brief** at `wakeTime` (push + in-app, opens Today), the **evening check-in** at `checkinTime` (opens `/checkin`; lighter wording after a missed one), **night learning** at 03:00 (marks an unanswered check-in missed, updates warmth and `relationshipStage`, refreshes the profile summary, and may plan at most one **proactive nudge** for the day, never in quiet hours or within an hour of the check-in), and the **weekly recap** on Sunday at 18:00 (email + in-app, opens `/recap`). The daily digest is now email-only.
 
 ### Notifications
 

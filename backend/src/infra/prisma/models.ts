@@ -14,7 +14,9 @@ export type {
   Banner as BannerRow,
   Broadcast as BroadcastRow,
   CmsPage as CmsPageRow,
+  CompanionNudge as CompanionNudgeRow,
   ContentSection as ContentSectionRow,
+  DailyCheckin as DailyCheckinRow,
   Device as DeviceRow,
   GoogleAccount as GoogleAccountRow,
   MediaAsset as MediaAssetRow,
@@ -29,5 +31,6 @@ export type {
   TranscriptSegment as TranscriptSegmentRow,
   User as UserRow,
   UserSettings as UserSettingsRow,
+  WeeklyRecap as WeeklyRecapRow,
 } from '../../generated/prisma/client';
 export { Prisma } from '../../generated/prisma/client';

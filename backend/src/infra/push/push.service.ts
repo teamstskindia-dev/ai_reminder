@@ -7,6 +7,8 @@ export interface PushPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  /** Notification category registered by the app (action buttons, e.g. "reminder": Done / Snooze). */
+  categoryId?: string;
 }
 
 export interface PushResult {
@@ -40,6 +42,7 @@ export class PushService {
       sound: 'default',
       priority: 'high',
       channelId: 'default',
+      ...(payload.categoryId ? { categoryId: payload.categoryId } : {}),
     }));
     let sent = 0;
     let failed = 0;

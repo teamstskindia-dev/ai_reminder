@@ -31,6 +31,9 @@ export const KNOWN_PROMPT_KEYS = [
   'audio_transcription',
   'onboarding_chat',
   'onboarding_profile',
+  'companion_chat',
+  'checkin_summary',
+  'nightly_learning',
 ] as const;
 const KNOWN_PROMPTS = new Set<string>(KNOWN_PROMPT_KEYS);
 

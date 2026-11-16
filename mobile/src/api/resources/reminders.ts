@@ -25,3 +25,12 @@ export function deleteReminder(id: string): Promise<void> {
 export function snoozeReminder(id: string, minutes: number): Promise<Reminder> {
   return api<Reminder>(`/reminders/${id}/snooze`, { method: 'POST', body: { minutes } });
 }
+
+/** Done: stops the reminder (no follow-up) and closes a linked action item. Idempotent. */
+export function completeReminder(id: string): Promise<Reminder> {
+  return api<Reminder>(`/reminders/${id}/done`, { method: 'POST' });
+}
+
+export function fetchReminder(id: string): Promise<Reminder> {
+  return api<Reminder>(`/reminders/${id}`);
+}

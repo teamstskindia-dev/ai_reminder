@@ -1,9 +1,15 @@
 import { router } from 'expo-router';
-import { AlarmClock, BellOff, Clock, Pencil, Sun, Trash } from 'lucide-react-native';
+import { AlarmClock, BellOff, Check, Clock, Pencil, Sun, Trash } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
-import { useCancelReminder, useDeleteReminder, useSnoozeReminder, type SnoozeChoice } from '@/api/hooks/reminders';
+import {
+  useCancelReminder,
+  useCompleteReminder,
+  useDeleteReminder,
+  useSnoozeReminder,
+  type SnoozeChoice,
+} from '@/api/hooks/reminders';
 import type { Reminder } from '@/api/types';
 import { ActionSheet, type ActionSheetOption } from '@/components/ui/ActionSheet';
 import type { SwipeAction } from '@/components/ui/SwipeRow';
@@ -22,7 +28,13 @@ export function useReminderMenu() {
   const snooze = useSnoozeReminder();
   const cancel = useCancelReminder();
   const remove = useDeleteReminder();
+  const complete = useCompleteReminder();
   const [target, setTarget] = useState<Reminder | null>(null);
+
+  const markDone = (reminder: Reminder) => {
+    haptics.success();
+    complete.mutate(reminder, { onSuccess: () => toast('Nice one! Marked done.') });
+  };
 
   const doSnooze = (reminder: Reminder, choice: SnoozeChoice, label: string) => {
     haptics.success();
@@ -44,6 +56,9 @@ export function useReminderMenu() {
   const tomorrow = tomorrowAt(9);
   const options: ActionSheetOption[] = target
     ? [
+        ...(target.status === 'pending' || target.status === 'sent'
+          ? [{ key: 'done', label: 'Mark done', icon: Check, onPress: () => markDone(target) }]
+          : []),
         { key: 's15', label: 'Snooze 15 minutes', icon: Clock, onPress: () => doSnooze(target, { kind: 'minutes', minutes: 15 }, 'for 15 minutes') },
         { key: 's60', label: 'Snooze 1 hour', icon: AlarmClock, onPress: () => doSnooze(target, { kind: 'minutes', minutes: 60 }, 'for 1 hour') },
         {
@@ -82,5 +97,5 @@ export function useReminderMenu() {
     ],
   });
 
-  return { openMenu: setTarget, swipeActions, sheet };
+  return { openMenu: setTarget, swipeActions, sheet, markDone };
 }

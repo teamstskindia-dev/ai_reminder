@@ -48,6 +48,8 @@ export class UsersService {
     if (dto.quietHoursStart !== undefined) data.quietHoursStart = dto.quietHoursStart;
     if (dto.quietHoursEnd !== undefined) data.quietHoursEnd = dto.quietHoursEnd;
     if (dto.checkinTime !== undefined) data.checkinTime = dto.checkinTime;
+    if (dto.morningBrief !== undefined) data.morningBrief = dto.morningBrief;
+    if (dto.eveningCheckin !== undefined) data.eveningCheckin = dto.eveningCheckin;
     if (dto.recordingConsentAcknowledged && !before.recordingConsentAt) data.recordingConsentAt = new Date();
     const after = Object.keys(data).length ? await this.users.updateSettings(userId, data) : before;
     const reschedule =

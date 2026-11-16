@@ -29,6 +29,7 @@ export class QueueAdminService {
     @InjectQueue(QUEUE.AI) ai: Queue,
     @InjectQueue(QUEUE.NOTIFICATIONS) notifications: Queue,
     @InjectQueue(QUEUE.DIGEST) digest: Queue,
+    @InjectQueue(QUEUE.COMPANION) companion: Queue,
   ) {
     this.queues = {
       'calendar-sync': sync,
@@ -37,6 +38,7 @@ export class QueueAdminService {
       'ai-processing': ai,
       notifications,
       digest,
+      companion,
     };
   }
 
