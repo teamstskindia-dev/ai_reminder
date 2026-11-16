@@ -251,6 +251,10 @@ export interface UserSettings {
   quietHoursEnd: string;
   checkinTime: string;
   recordingConsentAt: ISODate | null;
+  /** Push the morning brief at `wakeTime`. */
+  morningBrief: boolean;
+  /** Ask "how did today go?" at `checkinTime`. */
+  eveningCheckin: boolean;
 }
 
 /** PATCH /me/settings body: settings fields plus write-only flags. */
@@ -272,6 +276,8 @@ export interface UserProfile {
   tone: string | null;
   facts: string[];
   summary: string | null;
+  /** 1 polite and curious, 2 casual, 3 close friend (grows nightly with warmth). */
+  relationshipStage: number;
   updatedAt: ISODate | null;
 }
 
@@ -478,7 +484,7 @@ export interface UpdateActionItemInput {
 }
 
 export type ReminderChannel = 'push' | 'in_app' | 'email';
-export type ReminderStatus = 'pending' | 'sent' | 'cancelled' | 'failed';
+export type ReminderStatus = 'pending' | 'sent' | 'done' | 'cancelled' | 'failed';
 
 export interface Reminder {
   id: string;
@@ -493,6 +499,7 @@ export interface Reminder {
   meetingTitle: string | null;
   actionItemId: string | null;
   sentAt: ISODate | null;
+  doneAt: ISODate | null;
   createdAt: ISODate;
 }
 
@@ -528,7 +535,12 @@ export type NotificationType =
   | 'daily_digest'
   | 'bot_failed'
   | 'welcome'
-  | 'broadcast';
+  | 'broadcast'
+  | 'morning_brief'
+  | 'evening_checkin'
+  | 'reminder_followup'
+  | 'companion_nudge'
+  | 'weekly_recap';
 
 export interface NotificationData {
   meetingId?: string;
@@ -545,6 +557,80 @@ export interface AppNotification {
   body: string | null;
   data: NotificationData;
   readAt: ISODate | null;
+  createdAt: ISODate;
+}
+
+// ---------- Daily rhythm: Today, evening check-in, nudges, weekly recap ----------
+export interface CompanionMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  at: ISODate;
+}
+
+export type CheckinStatus = 'prompted' | 'replied' | 'completed' | 'missed';
+
+export interface DailyCheckin {
+  id: string;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  status: CheckinStatus;
+  tone: 'normal' | 'light';
+  messages: CompanionMessage[];
+  mood: number | null;
+  energy: number | null;
+  wins: string[];
+  summary: string | null;
+  completedAt: ISODate | null;
+}
+
+export interface CheckinReply {
+  checkin: DailyCheckin;
+  reply: string;
+  done: boolean;
+}
+
+export interface CompanionNudge {
+  id: string;
+  text: string;
+  status: 'scheduled' | 'sent' | 'dismissed' | 'cancelled';
+  sentAt: ISODate | null;
+  messages: CompanionMessage[];
+}
+
+export interface NudgeReply {
+  nudge: CompanionNudge;
+  reply: string;
+}
+
+export type TodayCheckinStatus = 'off' | 'upcoming' | 'due' | CheckinStatus;
+
+export interface TodayBrief {
+  date: string;
+  languageStyle: LanguageStyle;
+  greeting: string;
+  headline: string;
+  counts: { meetings: number; reminders: number; openItems: number };
+  meetings: MeetingListItem[];
+  reminders: Reminder[];
+  openItems: ActionItem[];
+  checkin: { time: string; status: TodayCheckinStatus; mood: number | null };
+  nudge: CompanionNudge | null;
+}
+
+export interface MoodPoint {
+  date: string;
+  mood: number | null;
+  energy: number | null;
+}
+
+export interface WeeklyRecap {
+  weekStart: string;
+  weekEnd: string;
+  headline: string;
+  meetings: { count: number; hours: number; highlights: { id: string; title: string; startAt: ISODate }[] };
+  promises: { kept: number; remindersDone: number; stillOpen: number };
+  mood: { days: MoodPoint[]; average: number | null; trend: 'up' | 'down' | 'flat' | null; checkins: number };
+  people: string[];
   createdAt: ISODate;
 }
 

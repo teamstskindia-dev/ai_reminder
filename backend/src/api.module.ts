@@ -32,6 +32,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BotSchedulingModule } from './modules/bot/bot-scheduling.module';
 import { RecallWebhookController } from './modules/bot/recall/recall-webhook.controller';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { CompanionController } from './modules/companion/companion.controller';
+import { CompanionModule } from './modules/companion/companion.module';
+import { TodayService } from './modules/companion/today.service';
 import { ContentModule } from './modules/content/content.module';
 import { DashboardController, DashboardService } from './modules/dashboard/dashboard.controller';
 import { DevicesController } from './modules/devices/devices.controller';
@@ -90,6 +93,7 @@ class StorageBootstrap implements OnApplicationBootstrap {
     AiModule,
     ContentModule,
     AdminModule,
+    CompanionModule,
   ],
   controllers: [
     HealthController,
@@ -100,6 +104,7 @@ class StorageBootstrap implements OnApplicationBootstrap {
     OnboardingController,
     IntegrationsController,
     DashboardController,
+    CompanionController,
     AnalyticsController,
     MeetingsController,
     ActionItemsController,
@@ -116,6 +121,7 @@ class StorageBootstrap implements OnApplicationBootstrap {
   ],
   providers: [
     DashboardService,
+    TodayService,
     AnalyticsService,
     AssistantService,
     OnboardingService,

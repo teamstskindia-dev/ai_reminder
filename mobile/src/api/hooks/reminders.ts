@@ -1,10 +1,12 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { patchEntity, removeEntity, restoreSnapshot } from '../cache';
 import { qk } from '../queryKeys';
 import {
+  completeReminder,
   createReminder,
   deleteReminder,
+  fetchReminder,
   listReminders,
   snoozeReminder,
   updateReminder,
@@ -13,7 +15,7 @@ import type { CreateReminderInput, Reminder, ReminderListQuery, UpdateReminderIn
 
 import { nextPageParam } from './pagination';
 
-const AFFECTED = [qk.reminders.all, qk.dashboard] as const;
+const AFFECTED = [qk.reminders.all, qk.dashboard, qk.today] as const;
 
 export function useRemindersInfinite(status: NonNullable<ReminderListQuery['status']>) {
   const query = { status, limit: 50 };
@@ -25,10 +27,18 @@ export function useRemindersInfinite(status: NonNullable<ReminderListQuery['stat
   });
 }
 
+export function useReminder(id: string) {
+  return useQuery({ queryKey: [...qk.reminders.all, 'detail', id], queryFn: () => fetchReminder(id), enabled: Boolean(id) });
+}
+
 function useInvalidateReminders() {
   const qc = useQueryClient();
   return () =>
-    Promise.all([qc.invalidateQueries({ queryKey: qk.reminders.all }), qc.invalidateQueries({ queryKey: qk.dashboard })]);
+    Promise.all([
+      qc.invalidateQueries({ queryKey: qk.reminders.all }),
+      qc.invalidateQueries({ queryKey: qk.dashboard }),
+      qc.invalidateQueries({ queryKey: qk.today }),
+    ]);
 }
 
 export function useSaveReminder() {
@@ -84,5 +94,17 @@ export function useDeleteReminder() {
     onMutate: (reminder) => removeEntity(qc, AFFECTED, reminder.id),
     onError: (_error, _vars, snapshot) => restoreSnapshot(qc, snapshot),
     onSettled: () => invalidate(),
+  });
+}
+
+/** Done (from Today, the reminder screen or the notification button): drops it from every list at once. */
+export function useCompleteReminder() {
+  const qc = useQueryClient();
+  const invalidate = useInvalidateReminders();
+  return useMutation({
+    mutationFn: (reminder: Pick<Reminder, 'id'>) => completeReminder(reminder.id),
+    onMutate: (reminder) => removeEntity(qc, [qk.dashboard, qk.today], reminder.id),
+    onError: (_error, _vars, snapshot) => restoreSnapshot(qc, snapshot),
+    onSettled: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: qk.actionItems.all })]),
   });
 }

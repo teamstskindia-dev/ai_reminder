@@ -25,6 +25,7 @@ export function toReminder(row: ReminderWithMeeting): Reminder {
     meetingTitle: row.meeting?.title ?? null,
     actionItemId: row.actionItemId,
     sentAt: row.sentAt?.toISOString() ?? null,
+    doneAt: row.doneAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }

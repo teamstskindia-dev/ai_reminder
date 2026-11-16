@@ -24,6 +24,8 @@ export interface DeliveryInput {
   channels?: ReminderChannel[];
   /** Used when there is no (active) template. */
   fallback?: { title: string; body: string | null };
+  /** Push category with action buttons (see the app's notification categories). */
+  categoryId?: string;
 }
 
 export interface DeliveryResult {
@@ -99,6 +101,7 @@ export class DeliveryService {
           const res = await this.push.send(tokens, {
             title,
             body: body ?? '',
+            categoryId: input.categoryId,
             data: {
               ...(input.data ?? {}),
               type: input.type,

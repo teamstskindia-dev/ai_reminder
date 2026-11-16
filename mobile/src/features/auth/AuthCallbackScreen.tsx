@@ -38,12 +38,16 @@ export function AuthCallbackScreen() {
   const theme = useTheme();
   const branding = useBranding();
   const homeRoute = useHomeRoute();
-  const { completeSignIn } = useAuth();
+  const { completeSignIn, status } = useAuth();
   const params = useLocalSearchParams<{ code?: string; error?: string }>();
   const code = readParam(params.code);
   const errorCode = readParam(params.error);
   // Decided once, when the callback arrives.
   const [initiated] = useState(() => (code ? isExchangeInFlight(code) || hasPendingSignIn() : hasPendingSignIn()));
+  // Re-auth while already signed in (calendar reconnect) returns to the previous screen. A fresh sign-in must
+  // not go back: signing in unmounts the signed-out screens below this one, so GO_BACK has no target and the
+  // app would sit on "Signing you in…".
+  const [wasSignedIn] = useState(() => status === 'signedIn');
   const [exchangeError, setExchangeError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,8 +60,7 @@ export function AuthCallbackScreen() {
     completeSignIn(code)
       .then(() => {
         if (cancelled) return;
-        // Re-auth while signed in (calendar reconnect) returns to where the user was.
-        if (router.canGoBack()) router.back();
+        if (wasSignedIn && router.canGoBack()) router.back();
         else router.replace(homeRoute);
       })
       .catch((error: unknown) => {
@@ -67,7 +70,7 @@ export function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [initiated, code, errorCode, completeSignIn, homeRoute]);
+  }, [initiated, code, errorCode, completeSignIn, homeRoute, wasSignedIn]);
 
   const failure = !initiated
     ? signInErrorMessage('no_pending')

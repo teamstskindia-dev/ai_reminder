@@ -95,6 +95,8 @@ export class DigestService {
         date: formatLongDate(now, tz),
         digestMarkdown: lines.join('\n'),
       },
+      // The morning brief is the daily push; the digest is the optional email (user-flow §12).
+      channels: ['email'],
       data: { url: '/dashboard' },
     });
     return res.delivered.length > 0;

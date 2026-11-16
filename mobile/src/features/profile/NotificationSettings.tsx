@@ -58,7 +58,7 @@ export function NotificationSettings({ settings, onChange }: { settings: UserSet
         <SwitchRow
           icon={Newspaper}
           title="Daily digest"
-          subtitle="Your meetings and open items each morning"
+          subtitle="An email with your meetings and open items each morning"
           value={settings.dailyDigest}
           onValueChange={(dailyDigest) => onChange({ dailyDigest })}
         />

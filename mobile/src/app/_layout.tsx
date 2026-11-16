@@ -10,7 +10,7 @@ import { queryClient } from '@/api/queryClient';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { ForceUpdateScreen, MaintenanceScreen } from '@/features/bootstrap/GateScreens';
-import { configureForegroundNotifications } from '@/features/push/handler';
+import { configureForegroundNotifications, registerNotificationCategories } from '@/features/push/handler';
 import { useAppBadge, useNotificationRouting, usePushRegistration } from '@/features/push/usePushNotifications';
 import { useHomeRoute } from '@/features/navigation/tabs';
 import { useRealtime } from '@/features/realtime/useRealtime';
@@ -28,6 +28,7 @@ const MODAL = { presentation: 'modal', animation: Platform.OS === 'android' ? 's
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 SplashScreen.setOptions({ fade: true, duration: 250 });
 configureForegroundNotifications();
+registerNotificationCategories();
 
 export default function RootLayout() {
   return (
@@ -129,6 +130,10 @@ function RootNavigator() {
           <Stack.Screen name="analytics" options={{ headerShown: true, title: 'Insights' }} />
           <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
           <Stack.Screen name="threads" options={{ headerShown: true, title: 'Conversations' }} />
+          <Stack.Screen name="checkin" options={{ headerShown: true, title: 'Evening check-in' }} />
+          <Stack.Screen name="nudge/[id]" options={{ headerShown: true, title: '' }} />
+          <Stack.Screen name="recap" options={{ headerShown: true, title: 'Weekly recap' }} />
+          <Stack.Screen name="reminder/[id]" options={{ headerShown: true, title: 'Reminder' }} />
         </Stack.Protected>
 
         <Stack.Protected guard={!signedIn && !onboardingSeen} redirectTo={signedIn ? signedInHome : '/login'}>

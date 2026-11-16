@@ -91,6 +91,16 @@ export class UpdateUserSettingsDto {
   @Matches(HHMM, { message: 'checkinTime must be "HH:MM" (24h)' })
   checkinTime?: string;
 
+  /** Push the morning brief at wake time. */
+  @IsOptionalNonNull()
+  @IsBoolean()
+  morningBrief?: boolean;
+
+  /** Ask "how did today go?" at check-in time. */
+  @IsOptionalNonNull()
+  @IsBoolean()
+  eveningCheckin?: boolean;
+
   /** `true` records that the user saw the one-time "let people know when you record" note. */
   @ApiPropertyOptional({ enum: [true] })
   @IsOptionalNonNull()

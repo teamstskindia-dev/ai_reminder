@@ -13,6 +13,7 @@ export class RepeatableJobsService implements OnApplicationBootstrap {
     private readonly config: AppConfig,
     @InjectQueue(QUEUE.CALENDAR_SYNC) private readonly syncQueue: Queue,
     @InjectQueue(QUEUE.DIGEST) private readonly digestQueue: Queue,
+    @InjectQueue(QUEUE.COMPANION) private readonly companionQueue: Queue,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -23,6 +24,12 @@ export class RepeatableJobsService implements OnApplicationBootstrap {
         'digest-hourly',
         { pattern: '0 * * * *' },
         { name: JOB.DIGEST_TICK, data: {} },
+      );
+      // Wake times and check-in times are "HH:MM", so the daily rhythm needs a finer tick than hourly.
+      await this.companionQueue.upsertJobScheduler(
+        'rhythm-5min',
+        { pattern: '*/5 * * * *' },
+        { name: JOB.RHYTHM_TICK, data: {} },
       );
       this.logger.log({ syncEveryMinutes: this.config.calendarSyncIntervalMinutes }, 'repeatable jobs registered');
     } catch (err) {

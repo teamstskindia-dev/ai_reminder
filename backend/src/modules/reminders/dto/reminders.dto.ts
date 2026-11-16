@@ -20,10 +20,10 @@ import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
 import { IsDateTime, IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
 
 export class ListRemindersQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ enum: ['pending', 'sent', 'cancelled', 'all'], default: 'pending' })
+  @ApiPropertyOptional({ enum: ['pending', 'sent', 'done', 'cancelled', 'all'], default: 'pending' })
   @IsOptional()
-  @IsIn(['pending', 'sent', 'cancelled', 'all'])
-  status: 'pending' | 'sent' | 'cancelled' | 'all' = 'pending';
+  @IsIn(['pending', 'sent', 'done', 'cancelled', 'all'])
+  status: 'pending' | 'sent' | 'done' | 'cancelled' | 'all' = 'pending';
 
   @IsOptional()
   @IsDateTime()

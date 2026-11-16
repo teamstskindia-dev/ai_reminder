@@ -6,7 +6,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { REMINDER_INCLUDE, ReminderWithMeeting } from './reminders.mapper';
 
 export interface ReminderListFilter {
-  status?: 'pending' | 'sent' | 'cancelled' | 'all';
+  status?: 'pending' | 'sent' | 'done' | 'cancelled' | 'all';
   from?: string;
   to?: string;
 }
@@ -87,6 +87,15 @@ export class RemindersRepository {
 
   pendingForMeeting(meetingId: string): Promise<ReminderRow[]> {
     return this.prisma.reminder.findMany({ where: { meetingId, status: 'pending' } });
+  }
+
+  /** Marks the linked action item done (if still open) and returns its other pending reminders. */
+  async completeActionItem(actionItemId: string): Promise<ReminderRow[]> {
+    await this.prisma.actionItem.updateMany({
+      where: { id: actionItemId, status: 'open' },
+      data: { status: 'done', completedAt: new Date() },
+    });
+    return this.pendingForActionItem(actionItemId);
   }
 
   async meetingBelongsTo(userId: string, meetingId: string): Promise<boolean> {

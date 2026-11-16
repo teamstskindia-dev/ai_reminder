@@ -101,6 +101,7 @@ function toProfile(row: ProfileRow | null): UserProfile {
       tone: null,
       facts: [],
       summary: null,
+      relationshipStage: 1,
       updatedAt: null,
     };
   }
@@ -114,6 +115,7 @@ function toProfile(row: ProfileRow | null): UserProfile {
     tone: row.tone,
     facts: Array.isArray(row.facts) ? row.facts.filter((f): f is string => typeof f === 'string') : [],
     summary: row.summary,
+    relationshipStage: row.relationshipStage,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -304,7 +306,7 @@ export class OnboardingService {
   private async saveProfile(
     userId: string,
     status: ProfileStatus,
-    data: Omit<UserProfile, 'updatedAt' | 'status'> | null,
+    data: Omit<UserProfile, 'updatedAt' | 'status' | 'relationshipStage'> | null,
   ): Promise<UserProfile> {
     const fields = data
       ? {

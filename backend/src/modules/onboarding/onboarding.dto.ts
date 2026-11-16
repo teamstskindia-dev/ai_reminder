@@ -56,6 +56,8 @@ export class UserProfile implements Contract.UserProfile {
   /** Short facts the user shared about themselves. */
   facts: string[];
   summary: string | null;
+  /** 1 polite and curious, 2 casual, 3 close friend. Grows with warmth (updated nightly). */
+  @ApiInteger({ minimum: 1, maximum: 3 }) relationshipStage: number;
   @ApiDateTime() updatedAt: string | null;
 }
 

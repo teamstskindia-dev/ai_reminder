@@ -28,45 +28,52 @@ export function deleteProfile(): Promise<void> {
   return api<void>('/me/profile', { method: 'DELETE' });
 }
 
-/** One multipart POST; the JSON client always sends application/json, so this uses fetch directly. */
-async function postVoiceNote(uri: string, token: string | null): Promise<string> {
+type VoiceNoteResponse =
+  | { success: true; data: { text: string } }
+  | { success: false; error: { code: ErrorCode; message: string }; requestId?: string };
+
+/**
+ * One multipart POST. Uses XMLHttpRequest, not fetch: Expo replaces the global fetch with `expo/fetch`,
+ * which rejects React Native's `{ uri, name, type }` file parts ("Unsupported FormDataPart
+ * implementation"). React Native's own XHR still streams the file from its URI.
+ */
+function postVoiceNote(uri: string, token: string | null): Promise<string> {
   const form = new FormData();
   const name = uri.split('/').pop() || 'voice-note.m4a';
-  // React Native's FormData accepts { uri, name, type } file parts.
   form.append('file', { uri, name, type: 'audio/mp4' } as unknown as Blob);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE_URL}/onboarding/transcribe`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: form,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    throw new ApiError({
-      code: controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR',
-      status: 0,
-      message: error instanceof Error ? error.message : 'Network request failed',
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-  const json = (await res.json().catch(() => null)) as
-    | { success: true; data: { text: string } }
-    | { success: false; error: { code: ErrorCode; message: string }; requestId?: string }
-    | null;
-  if (!res.ok || !json || json.success !== true) {
-    const body = json && json.success === false ? json : null;
-    throw new ApiError({
-      code: body?.error.code ?? 'INTERNAL_ERROR',
-      status: res.status,
-      message: body?.error.message ?? `Request failed (${res.status})`,
-      requestId: body?.requestId ?? null,
-    });
-  }
-  return json.data.text;
+
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}/onboarding/transcribe`);
+    xhr.timeout = 90_000;
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.onload = () => {
+      let json: VoiceNoteResponse | null = null;
+      try {
+        json = JSON.parse(xhr.responseText) as VoiceNoteResponse;
+      } catch {
+        json = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && json?.success === true) {
+        resolve(json.data.text);
+        return;
+      }
+      const body = json && json.success === false ? json : null;
+      reject(
+        new ApiError({
+          code: body?.error.code ?? 'INTERNAL_ERROR',
+          status: xhr.status,
+          message: body?.error.message ?? `Request failed (${xhr.status})`,
+          requestId: body?.requestId ?? null,
+        }),
+      );
+    };
+    xhr.onerror = () => reject(new ApiError({ code: 'NETWORK_ERROR', status: 0, message: 'Network request failed' }));
+    xhr.ontimeout = () => reject(new ApiError({ code: 'TIMEOUT', status: 0, message: 'Request timed out' }));
+    xhr.send(form);
+  });
 }
 
 /** Uploads a recorded voice answer and returns the transcript (one refresh-and-retry on 401). */
