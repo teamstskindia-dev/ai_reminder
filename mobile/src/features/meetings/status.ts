@@ -19,6 +19,7 @@ const META: Record<MeetingStatus, StatusMeta> = {
     description: 'The notetaker is in the waiting room. Ask the host to admit it.',
   },
   in_progress: { label: 'Recording', tone: 'danger', live: true, description: 'The notetaker is capturing the conversation.' },
+  uploading: { label: 'Uploading', tone: 'info', live: true, description: 'Your recording is being sent.' },
   processing: { label: 'Writing report', tone: 'brand', live: true, description: 'Your report will be ready in a few minutes.' },
   completed: { label: 'Report ready', tone: 'success', live: false, description: 'Your meeting report is ready.' },
   failed: { label: 'Failed', tone: 'danger', live: false, description: 'Something went wrong with this meeting.' },

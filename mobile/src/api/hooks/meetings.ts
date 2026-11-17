@@ -6,6 +6,7 @@ import {
   createMeeting,
   deleteMeeting,
   getMeeting,
+  getMeetingPrep,
   getTranscript,
   listMeetings,
   recallBot,
@@ -40,6 +41,16 @@ export function useMeeting(id: string | undefined) {
     queryFn: () => getMeeting(id as string),
     enabled: Boolean(id),
     refetchInterval: (query) => (isLiveStatus(query.state.data?.status) ? 5_000 : false),
+  });
+}
+
+/** Pre-meeting brief (talking points are generated, so it is cached for a while). */
+export function useMeetingPrep(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.prep(id ?? ''),
+    queryFn: () => getMeetingPrep(id as string),
+    enabled: Boolean(id) && enabled,
+    staleTime: 10 * 60_000,
   });
 }
 

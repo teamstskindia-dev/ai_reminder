@@ -174,7 +174,8 @@ export class CalendarSyncService {
     const link = detectMeetingLink(event);
     const startRaw = event.start?.dateTime;
 
-    if (event.status === 'cancelled' || declined || !link || !startRaw) {
+    // Timed events only (all-day events are not meetings). Events without a video link are in person.
+    if (event.status === 'cancelled' || declined || !startRaw) {
       if (existing && ['scheduled', 'skipped'].includes(existing.status)) {
         await this.scheduler.unscheduleMeeting(existing);
         await this.events.setStatus(existing.id, 'cancelled', { botJobId: null });
@@ -195,8 +196,8 @@ export class CalendarSyncService {
     const fields = {
       title: (event.summary?.trim() || 'Untitled meeting').slice(0, 300),
       description: event.description ? event.description.slice(0, 5000) : null,
-      platform: link.platform,
-      meetingUrl: link.url.slice(0, 1000),
+      platform: link?.platform ?? 'in_person',
+      meetingUrl: link ? link.url.slice(0, 1000) : null,
       startAt,
       endAt: endAt && !Number.isNaN(endAt.getTime()) ? endAt : null,
       timezone: event.start?.timeZone ?? null,

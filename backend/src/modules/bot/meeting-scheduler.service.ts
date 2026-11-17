@@ -6,7 +6,7 @@ import type { AutoJoinMode, PlanLimits } from '../../common/types/api.types';
 import { isJoinableMeetUrl } from '../../common/validation/safe-url';
 import { isUniqueViolation } from '../../infra/prisma/prisma-errors';
 import { removeJob, upsertJob } from '../../infra/queue/job-utils';
-import { BotJoinJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constants';
+import { BotJoinJob, JOB, JobId, MeetingPromptJob, QUEUE } from '../../infra/queue/queue.constants';
 import type { MeetingRow, UserSettingsRow } from '../../infra/prisma/models';
 import { SettingsService } from '../content/settings.service';
 import type { BotSettings } from '../content/settings.schemas';
@@ -50,6 +50,7 @@ export class MeetingSchedulerService {
 
   constructor(
     @InjectQueue(QUEUE.MEETING_BOT) private readonly botQueue: Queue,
+    @InjectQueue(QUEUE.COMPANION) private readonly companionQueue: Queue,
     private readonly meetings: MeetingsRepository,
     private readonly events: MeetingEventsService,
     private readonly users: UsersRepository,
@@ -71,6 +72,7 @@ export class MeetingSchedulerService {
       try {
         const updated = await this.scheduleBot(meeting, ctx);
         await this.syncUpcomingReminder(updated, ctx);
+        await this.syncMeetingPrompts(updated);
       } catch (err) {
         this.logger.error(`Scheduling meeting ${meeting.id} failed: ${(err as Error).message}`);
       }
@@ -81,12 +83,15 @@ export class MeetingSchedulerService {
     const ctx = await this.context(meeting.userId);
     const updated = await this.scheduleBot(meeting, ctx);
     await this.syncUpcomingReminder(updated, ctx);
+    await this.syncMeetingPrompts(updated);
     return updated;
   }
 
   /** Stops everything scheduled for a meeting (bot job + pending "starts soon" reminder). */
   async unscheduleMeeting(meeting: Pick<MeetingRow, 'id' | 'botJobId'>): Promise<void> {
     await removeJob(this.botQueue, JobId.bot(meeting.id));
+    await removeJob(this.companionQueue, JobId.meetingStart(meeting.id));
+    await removeJob(this.companionQueue, JobId.meetingNotes(meeting.id));
     const upcoming = await this.reminders.findMeetingUpcoming(meeting.id);
     if (upcoming?.status === 'pending') await this.remindersService.cancelMany([upcoming]);
   }
@@ -169,6 +174,39 @@ export class MeetingSchedulerService {
     }
     if (meeting.botJobId !== jobId) return this.meetings.update(meeting.id, { botJobId: jobId });
     return meeting;
+  }
+
+  /**
+   * "Meeting starting: record it?" at the start and "Add quick notes?" after the end (user-flow §06).
+   * Moving the meeting moves the jobs; a cancelled one removes them. The jobs re-check everything when they run.
+   */
+  private async syncMeetingPrompts(meeting: MeetingRow): Promise<void> {
+    const now = Date.now();
+    const active = meeting.status === 'scheduled' || meeting.status === 'skipped';
+    const start = meeting.startAt.getTime();
+    const end = (meeting.endAt ?? new Date(start + 60 * 60_000)).getTime() + 2 * 60_000;
+    const startId = JobId.meetingStart(meeting.id);
+    const notesId = JobId.meetingNotes(meeting.id);
+    if (active && start > now) {
+      await upsertJob<MeetingPromptJob>(
+        this.companionQueue,
+        JOB.MEETING_START,
+        { meetingId: meeting.id, at: meeting.startAt.toISOString() },
+        { jobId: startId, delay: start - now },
+      );
+    } else if (!active) {
+      await removeJob(this.companionQueue, startId);
+    }
+    if (active && end > now) {
+      await upsertJob<MeetingPromptJob>(
+        this.companionQueue,
+        JOB.MEETING_NOTES,
+        { meetingId: meeting.id, at: new Date(end).toISOString() },
+        { jobId: notesId, delay: end - now },
+      );
+    } else if (!active) {
+      await removeJob(this.companionQueue, notesId);
+    }
   }
 
   private async syncUpcomingReminder(meeting: MeetingRow, ctx: ScheduleContext): Promise<void> {

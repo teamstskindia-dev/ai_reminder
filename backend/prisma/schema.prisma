@@ -92,7 +92,7 @@ model UserSettings {
   userId                 String    @id @map("user_id") @db.Uuid
   autoJoin               String    @default("all") @map("auto_join")
   botName                String?   @map("bot_name")
-  meetingReminderMinutes Int       @default(10) @map("meeting_reminder_minutes")
+  meetingReminderMinutes Int       @default(30) @map("meeting_reminder_minutes")
   dailyDigest            Boolean   @default(true) @map("daily_digest")
   digestHour             Int       @default(8) @map("digest_hour")
   emailNotifications     Boolean   @default(true) @map("email_notifications")
@@ -238,6 +238,16 @@ model Meeting {
   durationSeconds Int?      @map("duration_seconds")
   recordingPath   String?   @map("recording_path")
   language        String?
+  /// Captures (source "capture"): idempotency key from the phone's upload queue.
+  clientId        String?   @map("client_id")
+  /// Captures: uploaded audio parts [{ index, path, durationMs, bytes }]; emptied once the audio is deleted.
+  recordingParts  Json      @default("[]") @map("recording_parts")
+  /// Captures: moments the user bookmarked while recording [{ atMs, label }].
+  bookmarks       Json      @default("[]")
+  /// Captures: when the user saved the review card.
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  /// Captures: the calendar event this recording belongs to.
+  linkedMeetingId String?   @map("linked_meeting_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -248,8 +258,11 @@ model Meeting {
   chunks       MeetingChunk[]
   actionItems  ActionItem[]
   reminders    Reminder[]
+  linkedMeeting Meeting?  @relation("MeetingRecordings", fields: [linkedMeetingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  recordings    Meeting[] @relation("MeetingRecordings")
 
   @@unique([userId, calendarEventId])
+  @@unique([userId, clientId])
   @@index([userId, startAt(sort: Desc)], map: "meetings_user_start_idx")
   @@index([status], map: "meetings_status_idx")
   @@index([title(ops: raw("gin_trgm_ops"))], map: "meetings_title_trgm_idx", type: Gin)
@@ -304,6 +317,8 @@ model MeetingReport {
   model           String?
   promptVersion   Int?     @map("prompt_version")
   raw             Json?
+  /// Captures: people, facts about the user, mood and reminders to confirm (CaptureInsights).
+  insights        Json?
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -489,11 +504,15 @@ model AssistantThread {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   title     String
+  /// 'ask' (Ask AI over meetings) or 'talk' (the friend, user-flow §05).
+  kind      String   @default("ask")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   user     User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   messages AssistantMessage[]
+
+  @@index([userId, kind, updatedAt(sort: Desc)], map: "assistant_threads_user_kind_idx")
 
   @@index([userId, updatedAt(sort: Desc)], map: "assistant_threads_user_idx")
   @@map("assistant_threads")
@@ -506,6 +525,10 @@ model AssistantMessage {
   role      String
   content   String
   sources   Json     @default("[]")
+  /// Talk: action cards (reminder set, meeting proposal, email draft, task).
+  actions   Json     @default("[]")
+  /// Talk: { intent, mood, crisis }.
+  meta      Json?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   thread AssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade, onUpdate: NoAction)

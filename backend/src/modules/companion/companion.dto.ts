@@ -108,6 +108,8 @@ export class TodayBrief implements Contract.TodayBrief {
   checkin: TodayCheckinState;
   /** Today's proactive nudge, once sent and until dismissed. */
   nudge: CompanionNudge | null;
+  /** Ids of today's meetings that overlap another one (double-booked). */
+  overlapIds: string[];
 }
 
 export class MoodPoint implements Contract.MoodPoint {

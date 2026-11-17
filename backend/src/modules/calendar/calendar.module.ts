@@ -6,11 +6,12 @@ import { RemindersModule } from '../reminders/reminders.module';
 import { UsersModule } from '../users/users.module';
 import { CalendarConnectionService } from './calendar-connection.service';
 import { CalendarSyncService } from './calendar-sync.service';
+import { CalendarWriteService } from './calendar-write.service';
 
 /** Calendar sync services (shared by api and worker; the processor is registered by the worker only). */
 @Module({
   imports: [UsersModule, MeetingsCoreModule, BotSchedulingModule, RemindersModule, NotificationsModule],
-  providers: [CalendarSyncService, CalendarConnectionService],
-  exports: [CalendarSyncService, CalendarConnectionService],
+  providers: [CalendarSyncService, CalendarConnectionService, CalendarWriteService],
+  exports: [CalendarSyncService, CalendarConnectionService, CalendarWriteService],
 })
 export class CalendarModule {}

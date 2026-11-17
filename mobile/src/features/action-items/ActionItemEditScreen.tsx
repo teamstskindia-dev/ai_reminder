@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { AlarmClock, CircleCheck, SearchX, Trash } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
@@ -21,6 +21,7 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useConfig } from '@/providers/config/ConfigProvider';
 import { toast } from '@/utils/toast';
+import { goBack } from '@/features/navigation/goBack';
 
 import { openReminderFor } from './useActionItemMenu';
 
@@ -76,7 +77,7 @@ function ActionItemForm({ existing, meetingId }: { existing: ActionItem | null; 
       {
         onSuccess: () => {
           toast(existing ? 'Action item updated' : 'Action item added');
-          router.back();
+          goBack();
         },
         onError: (error) => {
           const fields = fieldErrors(error);
@@ -96,7 +97,7 @@ function ActionItemForm({ existing, meetingId }: { existing: ActionItem | null; 
         style: 'destructive',
         onPress: () =>
           remove.mutate(existing, {
-            onSuccess: () => router.back(),
+            onSuccess: () => goBack(),
           }),
       },
     ]);
@@ -162,7 +163,7 @@ export function ActionItemEditScreen() {
     <FeatureGate feature="actionItems">
       <Stack.Screen options={{ title: id ? 'Edit action item' : 'New action item' }} />
       {id && !existing ? (
-        <EmptyState icon={SearchX} title="Action item not found" message="It may have been deleted." action={{ label: 'Close', onPress: () => router.back() }} />
+        <EmptyState icon={SearchX} title="Action item not found" message="It may have been deleted." action={{ label: 'Close', onPress: () => goBack() }} />
       ) : (
         <ActionItemForm existing={existing} meetingId={meetingId} />
       )}

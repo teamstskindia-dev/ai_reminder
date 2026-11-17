@@ -4,8 +4,20 @@ import { CodeChallengeMethod, Credentials, OAuth2Client } from 'google-auth-libr
 import { AppConfig } from '../../config/app-config';
 import { callExternal } from '../external/external-call';
 
-export const GOOGLE_SCOPES = ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/calendar.events.readonly'];
-export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+/** Read and write events: sync the calendar and schedule meetings the user asked for (user-flow §06). */
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+/** Granted by accounts connected before scheduling existed: sync works, scheduling needs a reconnect. */
+export const CALENDAR_READONLY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+export const GOOGLE_SCOPES = ['openid', 'email', 'profile', CALENDAR_SCOPE];
+
+export function hasCalendarScope(scope: string | null | undefined): boolean {
+  const granted = (scope ?? '').split(' ');
+  return granted.includes(CALENDAR_SCOPE) || granted.includes(CALENDAR_READONLY_SCOPE);
+}
+
+export function canWriteCalendar(scope: string | null | undefined): boolean {
+  return (scope ?? '').split(' ').includes(CALENDAR_SCOPE);
+}
 
 export interface GoogleProfile {
   sub: string;

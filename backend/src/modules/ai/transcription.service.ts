@@ -18,6 +18,52 @@ export const AUDIO_MIME_BY_EXT: Record<string, string> = {
   ogg: 'audio/ogg',
 };
 
+/** One uploaded part of a capture, in recording order. */
+export interface RecordingPart {
+  index: number;
+  path: string;
+  durationMs: number;
+  bytes?: number;
+}
+
+/** Reads `meetings.recording_parts` defensively (it is JSON). */
+export function toRecordingParts(raw: unknown): RecordingPart[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    .filter((p) => typeof p.path === 'string' && Number.isInteger(p.index))
+    .map((p) => ({
+      index: p.index as number,
+      path: p.path as string,
+      durationMs: typeof p.durationMs === 'number' && p.durationMs > 0 ? Math.round(p.durationMs) : 0,
+      bytes: typeof p.bytes === 'number' ? p.bytes : undefined,
+    }))
+    .sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Joins per-part transcripts into one: each part's times are shifted by the duration of the parts before
+ * it, and `seq` is renumbered. A part without a known duration falls back to its last segment's end.
+ */
+export function mergePartSegments(parts: { durationMs: number; segments: SegmentInput[] }[]): SegmentInput[] {
+  const out: SegmentInput[] = [];
+  let offset = 0;
+  for (const part of parts) {
+    for (const s of part.segments) {
+      out.push({
+        seq: out.length,
+        speaker: s.speaker,
+        text: s.text,
+        startMs: s.startMs + offset,
+        endMs: s.endMs === null || s.endMs === undefined ? null : s.endMs + offset,
+      });
+    }
+    const lastEnd = part.segments.reduce((max, s) => Math.max(max, s.endMs ?? s.startMs), 0);
+    offset += part.durationMs > 0 ? part.durationMs : lastEnd;
+  }
+  return out;
+}
+
 /** Uploaded audio → speaker-labelled segments through the Gemini Files API (`audio_transcription`). */
 @Injectable()
 export class TranscriptionService {
@@ -78,5 +124,14 @@ export class TranscriptionService {
       .map((s, i) => ({ seq: i, speaker: s.speaker, text: s.text, startMs: s.startMs, endMs: s.endMs }));
     this.logger.log({ segments: segments.length, audioBytes: audio.size }, 'audio transcribed');
     return segments;
+  }
+
+  /** A capture recorded in parts: each part is transcribed on its own, then the transcripts are joined. */
+  async transcribeParts(parts: RecordingPart[]): Promise<SegmentInput[]> {
+    const results: { durationMs: number; segments: SegmentInput[] }[] = [];
+    for (const part of parts) {
+      results.push({ durationMs: part.durationMs, segments: await this.transcribe(part.path) });
+    }
+    return mergePartSegments(results);
   }
 }

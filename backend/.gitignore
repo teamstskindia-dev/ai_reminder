@@ -3,3 +3,6 @@ src/generated/
 dist/
 coverage/
 .env
+
+# Local file storage used in development when Supabase Storage is not configured
+.data/

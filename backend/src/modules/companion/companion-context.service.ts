@@ -4,6 +4,8 @@ import { formatTime, safeTimeZone } from '../../common/utils/time.util';
 import type { UserSettingsRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toCaptureInsights } from '../ai/capture-insights.service';
+import { overlappingIds } from '../meetings/overlap.util';
 import type { DaySummary } from './companion.copy';
 import { atLocalTime } from './rhythm.util';
 
@@ -24,6 +26,8 @@ export interface DayFacts extends DaySummary {
   openTitles: string[];
   /** Reminders marked done and to-dos completed during the day. */
   doneTitles: string[];
+  /** Reminders from the day's recorded conversations the friend is still unsure about (not reviewed). */
+  unconfirmedTitles: string[];
 }
 
 const LANGS: LanguageStyle[] = ['english', 'hinglish', 'mixed'];
@@ -59,9 +63,14 @@ export class CompanionContextService {
   async day(userId: string, timezone: string, day: string): Promise<DayFacts> {
     const start = atLocalTime(day, timezone, '00:00');
     const end = new Date(start.getTime() + 24 * 3600_000);
-    const [meetingList, reminders, openItems, openRows, doneReminders, doneItems] = await Promise.all([
+    const [meetingList, reminders, openItems, openRows, doneReminders, doneItems, captureReports] = await Promise.all([
       this.prisma.meeting.findMany({
-        where: { userId, startAt: { gte: start, lt: end }, status: { notIn: ['cancelled'] } },
+        where: {
+          userId,
+          startAt: { gte: start, lt: end },
+          status: { notIn: ['cancelled'] },
+          source: { not: 'capture' },
+        },
         orderBy: { startAt: 'asc' },
         select: { id: true, title: true, startAt: true, endAt: true, status: true },
         take: 20,
@@ -86,15 +95,26 @@ export class CompanionContextService {
         select: { title: true },
         take: 10,
       }),
+      this.prisma.meetingReport.findMany({
+        where: { userId, meeting: { source: 'capture', startAt: { gte: start, lt: end }, reviewedAt: null } },
+        select: { insights: true },
+        take: 10,
+      }),
     ]);
     return {
       meetings: meetingList.length,
+      overlaps: overlappingIds(meetingList).length,
       firstMeetingAt: meetingList[0] ? formatTime(meetingList[0].startAt, timezone) : null,
       reminders,
       openItems,
       meetingList,
       openTitles: openRows.map((r) => r.title),
       doneTitles: [...new Set([...doneReminders, ...doneItems].map((r) => r.title))],
+      unconfirmedTitles: captureReports
+        .flatMap((r) => toCaptureInsights(r.insights)?.suggestions ?? [])
+        .filter((sg) => sg.status === 'open')
+        .map((sg) => sg.title)
+        .slice(0, 5),
     };
   }
 
@@ -125,7 +145,10 @@ export class CompanionContextService {
       facts.openTitles.length
         ? `Still open (${facts.openItems}): ${facts.openTitles.join('; ')}`
         : 'Still open: nothing',
-    ];
+      facts.unconfirmedTitles.length
+        ? `From today's recorded conversations, not confirmed yet (ask gently whether and when to remind): ${facts.unconfirmedTitles.join('; ')}`
+        : null,
+    ].filter(Boolean);
     return lines.join('\n');
   }
 }

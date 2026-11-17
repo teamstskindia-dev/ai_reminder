@@ -10,6 +10,8 @@ import { RealtimeEmitter } from '../../infra/realtime/realtime-emitter.service';
 import { followUpPush } from '../companion/companion.copy';
 import { inQuietHours, localMinutes } from '../companion/rhythm.util';
 import { SettingsService } from '../content/settings.service';
+import { toAttendees } from '../meetings/meetings.mapper';
+import { endOf, nextBackToBack, overlaps } from '../meetings/overlap.util';
 import { normalizeChannels, toReminder } from '../reminders/reminders.mapper';
 import { RemindersRepository } from '../reminders/reminders.repository';
 import { DeliveryService } from './delivery.service';
@@ -47,7 +49,7 @@ export class ReminderDispatchService {
     }
     const user = await this.prisma.user.findUnique({
       where: { id: reminder.userId },
-      select: { timezone: true, settings: { select: { botName: true } } },
+      select: { timezone: true, email: true, settings: { select: { botName: true } } },
     });
     if (!user) return 'skipped';
     const tz = user.timezone;
@@ -73,6 +75,7 @@ export class ReminderDispatchService {
         minutes: Math.max(0, Math.round((meeting.startAt.getTime() - now.getTime()) / 60_000)),
         botName: user.settings?.botName ?? bot.botName,
         startTime: formatTime(meeting.startAt, tz),
+        prepLine: await this.prepLine(meeting, user.email, tz),
       };
     } else if (reminder.type === 'action_item_due') {
       const item = reminder.actionItemId
@@ -120,6 +123,50 @@ export class ReminderDispatchService {
       );
     }
     return 'sent';
+  }
+
+  /**
+   * One line for the pre-meeting brief push (user-flow §06): who is coming, a double-booking warning and,
+   * for back-to-back meetings, the next one too. The next meeting's own brief is then folded into this
+   * one (its reminder is marked sent) so the user gets one combined short brief.
+   */
+  private async prepLine(
+    meeting: { id: string; userId: string; startAt: Date; endAt: Date | null; attendees: unknown },
+    selfEmail: string,
+    tz: string,
+  ): Promise<string> {
+    const others = await this.prisma.meeting.findMany({
+      where: {
+        userId: meeting.userId,
+        id: { not: meeting.id },
+        source: { not: 'capture' },
+        status: { notIn: ['cancelled', 'failed'] },
+        startAt: {
+          gte: new Date(meeting.startAt.getTime() - 6 * 3600_000),
+          lte: new Date(endOf(meeting).getTime() + 3600_000),
+        },
+      },
+      select: { id: true, title: true, startAt: true, endAt: true },
+    });
+    const names = toAttendees(meeting.attendees)
+      .filter((a) => a.email.toLowerCase() !== selfEmail.toLowerCase())
+      .map((a) => a.name?.split(/s+/)[0] || a.email.split('@')[0])
+      .slice(0, 3);
+    const conflict = others.find((o) => overlaps(meeting, o));
+    const next = nextBackToBack(meeting, others);
+    if (next) {
+      const pending = await this.reminders.findMeetingUpcoming(next.id);
+      if (pending?.status === 'pending') {
+        await this.reminders.update(pending.id, { status: 'sent', sentAt: new Date(), failureReason: null });
+      }
+    }
+    const parts = [
+      names.length ? `With ${names.join(', ')}.` : null,
+      conflict ? `Overlaps with ${conflict.title}.` : null,
+      next ? `Then ${next.title} at ${formatTime(next.startAt, tz)}.` : null,
+      'Tap for your prep.',
+    ];
+    return parts.filter(Boolean).join(' ');
   }
 
   /**
