@@ -15,6 +15,8 @@ export interface DaySummary {
   firstMeetingAt: string | null;
   reminders: number;
   openItems: number;
+  /** How many of the day's meetings overlap another one (double-booked). */
+  overlaps?: number;
 }
 
 export function greeting(lang: LanguageStyle, name: string | null, localHour: number): string {
@@ -25,6 +27,12 @@ export function greeting(lang: LanguageStyle, name: string | null, localHour: nu
 
 /** One line about the day: "3 meetings today (first at 10:00 AM), 2 reminders and 4 open to-dos." */
 export function dayHeadline(lang: LanguageStyle, d: DaySummary): string {
+  const line = dayLine(lang, d);
+  if (!d.overlaps) return line;
+  return `${line} ${pick(lang, `Heads up: ${d.overlaps} meetings overlap.`, `Dhyan do: ${d.overlaps} meetings ek saath hain.`)}`;
+}
+
+function dayLine(lang: LanguageStyle, d: DaySummary): string {
   if (!d.meetings && !d.reminders && !d.openItems) {
     return pick(lang, 'Your day is clear. Want to plan something?', 'Aaj ka din free hai. Kuch plan karein?');
   }

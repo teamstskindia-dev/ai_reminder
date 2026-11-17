@@ -16,6 +16,7 @@ import {
 } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { useCaptures } from '@/api/hooks/captures';
 import { useDismissNudge, useToday } from '@/api/hooks/companion';
 import { useDashboard } from '@/api/hooks/dashboard';
 import { useToggleAutoJoin } from '@/api/hooks/meetings';
@@ -37,6 +38,7 @@ import { EmptyState, ErrorState } from '@/components/ui/StateViews';
 import { Text } from '@/components/ui/Text';
 import { Touchable } from '@/components/ui/Touchable';
 import { ActionItemRow } from '@/features/action-items/ActionItemRow';
+import { CaptureCards } from '@/features/capture/CaptureCards';
 import { openActionItemEditor, useActionItemActions } from '@/features/action-items/useActionItemMenu';
 import { moodEmoji } from '@/features/companion/mood';
 import { MeetingCard } from '@/features/meetings/MeetingCard';
@@ -177,7 +179,10 @@ export function HomeScreen() {
   const actionItems = useActionItemActions();
   const reminderMenu = useReminderMenu();
   const { dismissed, dismiss } = useDismissedBanners();
-  const refreshControl = useRefreshControl(() => Promise.all([today.refetch(), dashboard.refetch(), unread.refetch()]));
+  const captures = useCaptures();
+  const refreshControl = useRefreshControl(() =>
+    Promise.all([today.refetch(), dashboard.refetch(), unread.refetch(), captures.refetch()]),
+  );
 
   const t = today.data;
   const data = dashboard.data;
@@ -232,13 +237,16 @@ export function HomeScreen() {
         ) : t ? (
           <View style={styles.sections}>
             <BriefCard today={t} />
+            <CaptureCards lang={lang} />
             <NudgeCard today={t} lang={lang} />
             <CheckinCard today={t} lang={lang} />
 
             <View style={styles.section}>
               <SectionHeader title={pick(lang, 'Today’s meetings', 'Aaj ki meetings')} actionLabel={pick(lang, 'All meetings', 'Sab meetings')} onAction={() => router.push('/meetings')} />
               {t.meetings.length ? (
-                t.meetings.map((meeting) => <MeetingCard key={meeting.id} meeting={meeting} onToggleAutoJoin={onToggleAutoJoin} />)
+                t.meetings.map((meeting) => (
+                  <MeetingCard key={meeting.id} meeting={meeting} onToggleAutoJoin={onToggleAutoJoin} overlapping={(t.overlapIds ?? []).includes(meeting.id)} />
+                ))
               ) : (
                 <Card muted>
                   <EmptyState

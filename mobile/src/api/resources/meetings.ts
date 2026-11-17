@@ -6,6 +6,7 @@ import type {
   MeetingListQuery,
   TranscriptSegment,
   UpdateMeetingInput,
+  MeetingPrep,
 } from '../types';
 
 export function listMeetings(query: MeetingListQuery) {
@@ -14,6 +15,11 @@ export function listMeetings(query: MeetingListQuery) {
 
 export function getMeeting(id: string): Promise<MeetingDetail> {
   return api<MeetingDetail>(`/meetings/${id}`);
+}
+
+/** Pre-meeting brief: attendees, last discussed, promises both ways, talking points, conflicts. */
+export function getMeetingPrep(id: string): Promise<MeetingPrep> {
+  return api<MeetingPrep>(`/meetings/${id}/prep`, { timeoutMs: 30_000 });
 }
 
 export function getTranscript(id: string): Promise<TranscriptSegment[]> {

@@ -84,10 +84,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-audio',
       {
-        // Voice answers in the get-to-know-you chat now; tap-to-record conversations next.
+        // Voice answers and tap-to-record conversations. Background recording keeps a conversation going
+        // with the screen locked (Android: microphone foreground service; iOS: the audio background mode).
         microphonePermission: 'Allow $(PRODUCT_NAME) to use the microphone so you can talk to your friend and record conversations.',
         recordAudioAndroid: true,
-        enableBackgroundRecording: false,
+        enableBackgroundRecording: true,
         enableBackgroundPlayback: false,
       },
     ],

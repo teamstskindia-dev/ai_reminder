@@ -109,6 +109,64 @@ The microphone is now used (`expo-audio` plugin in `app.config.ts`), so voice an
 
 All of this is JavaScript only: no new native modules, so no rebuild of the development build is needed.
 
+## Tap to record a conversation (user-flow §04)
+
+`src/features/capture/`, API under `/captures` (see `docs/API_CONTRACT.md`).
+
+- **Record button**: a floating mic on every tab (`RecordFab`) opens `/capture/record`, which starts right away. The
+  first recording ever shows a one-time consent reminder ("let people know you're recording").
+- **Recording screen** (`RecordScreen`, engine in `useCaptureRecorder`): timer, live waveform (metering), clear
+  recording indicator, pause/resume, bookmark this moment, optional title, **Stop & save**, **Stop and delete**.
+  "Still recording?" every 90 minutes; hard stop at 4 hours. Recording continues with the screen locked
+  (`enableBackgroundRecording` in the `expo-audio` plugin), so **this needs a rebuilt development build**.
+- **Crash-safe parts**: audio is recorded in parts of 5 minutes; each finished part is moved to the documents folder
+  and the session is saved (`captureStore`). After a crash, app kill or dead battery, the next start keeps the saved
+  parts and sends them ("Saved 12 min of your last recording").
+- **Interruptions**: if the mic stops delivering (a phone call, another app), the recording pauses with a banner;
+  Resume starts a fresh part. Android's back button never silently drops a running recording.
+- **Offline queue** (`uploadQueue`): recordings wait on the phone and are sent when online (on start, on reconnect,
+  on resume, every minute), part by part with retries and backoff (`POST /captures` → `PUT /captures/:id/parts/:i`
+  → `POST /captures/:id/finish`). Uploads use XMLHttpRequest (`src/api/multipart.ts`): `expo/fetch` rejects React
+  Native file parts.
+- **Today cards** (`CaptureCards`): sending / waiting for internet, processing, ready to review (with things to
+  confirm), failed (try again or delete). The `capture_ready` push opens the review card.
+- **Review card** (`/capture/[id]`, `CaptureScreen`): a quick check for reminders the friend didn't set because
+  something was unclear ("Rohit or Rahul?", with one-tap answers, editable title and time), summary, to-dos and
+  reminders (edit, complete or remove), people, facts about you (ticked ones are remembered on Save), mood,
+  bookmarks and the transcript. Never reviewing is fine: clear reminders are already set, and unreviewed questions
+  come up in the evening check-in. Raw audio is deleted after processing.
+- **Not yet**: home-screen widget and lock-screen shortcut, low storage/battery warnings, sending tasks to
+  Notion/Jira (MVP+), people cards (Memory).
+
+## Talk with your friend (user-flow §05)
+
+The `ask` tab is now **Talk** (`src/features/talk/`, API `/talk/*`).
+
+- **Three ways to talk**: type; **hold the mic** to speak (release sends); or a **voice conversation** (wave icon):
+  listen → the friend answers out loud (`expo-speech`) → listen again, a pause in speech ends a turn.
+  `expo-speech` is a native module, so this needs a rebuilt development build.
+- The friend replies in your style and relationship stage, answers "what did Rahul say…" from memory with **source
+  cards**, and says so honestly when it doesn't know.
+- **Actions**: reminders are set at once (card with Open). A meeting ("set a call with Rahul Friday afternoon") comes
+  back as an **invite preview** (free slot from your calendar, Rahul's email from past meetings; edit time, length,
+  guests) and is only sent on **Send invite**. Email drafts open in your own email app. Jira/Notion are not connected
+  yet, so tasks go to your to-dos. Reading email is "coming soon".
+- **Incognito** (eye icon): nothing saved or learned. **Crisis**: a care card with Tele-MANAS 14416 and 112.
+- History (clock icon) lists past conversations; long-press to delete.
+
+## Google Calendar and meetings (user-flow §06)
+
+- Upcoming meetings show a **Prep** card (meeting screen): who is coming, what you last discussed with them, open
+  promises both ways, talking points, double-booking warning, what is right after, and **Record this meeting**.
+- Pushes: pre-meeting brief (30 min before by default), **"… is starting: record it?"** and **"How did … go? Add
+  quick notes"** after an unrecorded meeting. Both open the recorder linked to the event (`/capture/record?meetingId=`;
+  quick notes stop at 2 minutes).
+- A recording linked to a meeting takes its title and attendees; its review card shows the meeting chip and a
+  **follow-up email** draft to send from your own email (or skip). A recording that matches no event asks "Was this
+  one of these meetings?" or keeps it standalone.
+- Today marks double-booked meetings (**Overlaps**). In-person events (no video link) now sync too.
+- Scheduling needs the calendar connected with write access: existing users reconnect once in Profile.
+
 ## Builds (EAS)
 
 The repo uses Continuous Native Generation — no committed `ios/` or `android/` folders. Native configuration lives in

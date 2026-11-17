@@ -25,6 +25,16 @@ export const qk = {
     detail: (id: string) => ['meetings', 'detail', id] as const,
     transcript: (id: string) => ['meetings', 'transcript', id] as const,
   },
+  talk: {
+    threads: ['talk', 'threads'] as const,
+    messages: (threadId: string) => ['talk', 'messages', threadId] as const,
+  },
+  prep: (meetingId: string) => ['meetings', 'prep', meetingId] as const,
+  captures: {
+    all: ['captures'] as const,
+    list: ['captures', 'list'] as const,
+    detail: (id: string) => ['captures', 'detail', id] as const,
+  },
   actionItems: {
     all: ['action-items'] as const,
     list: (params: Omit<ActionItemListQuery, 'page'>) => ['action-items', 'list', params] as const,

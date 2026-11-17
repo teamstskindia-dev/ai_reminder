@@ -10,6 +10,7 @@ const NOTIFICATIONS: SafeTarget = { kind: 'internal', path: '/notifications', fe
 /**
  * Where a notification (push tap or in-app row) should go, through the link allowlist:
  * a reminder (`data.reminderId`, except "meeting starts soon") → the reminder with Done / Snooze,
+ * `data.captureId` (a recorded conversation) → its review card,
  * `data.meetingId` (UUID) → meeting detail, `data.url` (allowlisted route or https) → that target,
  * otherwise the notifications screen.
  */
@@ -17,6 +18,11 @@ export function routeForNotificationData(data: NotificationData | Record<string,
   const reminderId = typeof data?.reminderId === 'string' ? data.reminderId : null;
   if (reminderId && data?.type !== 'meeting_upcoming') {
     const target = safeUrl(`/reminder/${reminderId}`);
+    if (target) return target;
+  }
+  const captureId = typeof data?.captureId === 'string' ? data.captureId : null;
+  if (captureId) {
+    const target = safeUrl(`/capture/${captureId}`);
     if (target) return target;
   }
   const meetingId = typeof data?.meetingId === 'string' ? data.meetingId : null;

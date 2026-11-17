@@ -1,9 +1,11 @@
 import type { ErrorBoundaryProps } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { Icon } from '@/components/Icon';
+import { RecordFab } from '@/features/capture/RecordFab';
 import { TAB_ROUTES, useVisibleTabs } from '@/features/navigation/tabs';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -21,6 +23,7 @@ export default function TabsLayout() {
   const hidden = TAB_ROUTES.filter((route) => !visibleRoutes.has(route));
 
   return (
+    <View style={styles.root}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -55,8 +58,17 @@ export default function TabsLayout() {
         <Tabs.Screen key={route} name={route} options={{ href: null }} />
       ))}
     </Tabs>
+      {/* Recording is one tap away from every tab (user-flow §04). */}
+      <RecordFab bottom={60 + bottomPad + 16} />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
 
 export function ErrorBoundary(props: ErrorBoundaryProps) {
   return <ErrorFallback {...props} scope="tabs" />;

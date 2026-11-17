@@ -10,6 +10,7 @@ import { queryClient } from '@/api/queryClient';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { ForceUpdateScreen, MaintenanceScreen } from '@/features/bootstrap/GateScreens';
+import { useCaptureUploader } from '@/features/capture/uploadQueue';
 import { configureForegroundNotifications, registerNotificationCategories } from '@/features/push/handler';
 import { useAppBadge, useNotificationRouting, usePushRegistration } from '@/features/push/usePushNotifications';
 import { useHomeRoute } from '@/features/navigation/tabs';
@@ -97,6 +98,8 @@ function RootNavigator() {
   useNotificationRouting({ signedIn, isEnabled });
   useAppBadge(signedIn);
   useRealtime(signedIn);
+  // Sends recorded conversations waiting on the phone (offline queue, crash recovery).
+  useCaptureUploader(inApp);
 
   return (
     <>
@@ -134,6 +137,11 @@ function RootNavigator() {
           <Stack.Screen name="nudge/[id]" options={{ headerShown: true, title: '' }} />
           <Stack.Screen name="recap" options={{ headerShown: true, title: 'Weekly recap' }} />
           <Stack.Screen name="reminder/[id]" options={{ headerShown: true, title: 'Reminder' }} />
+          <Stack.Screen
+            name="capture/record"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }}
+          />
+          <Stack.Screen name="capture/[id]" options={{ headerShown: true, title: '' }} />
         </Stack.Protected>
 
         <Stack.Protected guard={!signedIn && !onboardingSeen} redirectTo={signedIn ? signedInHome : '/login'}>

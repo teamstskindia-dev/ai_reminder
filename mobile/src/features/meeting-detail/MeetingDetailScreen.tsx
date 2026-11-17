@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { EllipsisVertical, ExternalLink, FileSearch, ListChecks, LogOut, Plus, RefreshCw, Search, Send, Trash } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +28,7 @@ import { pluralize } from '@/utils/format';
 import { toast } from '@/utils/toast';
 
 import { MeetingHeader } from './MeetingHeader';
+import { MeetingPrepCard } from './MeetingPrepCard';
 import { PeopleTab } from './PeopleTab';
 import { ScoresRow } from './ScoresRow';
 import { SummaryTab } from './SummaryTab';
@@ -73,6 +74,11 @@ export function MeetingDetailScreen() {
   const refreshControl = useRefreshControl(() =>
     Promise.all([meetingQuery.refetch(), segment === 'transcript' ? transcript.refetch() : Promise.resolve()]),
   );
+
+  // A recorded conversation has its own screen (review card).
+  useEffect(() => {
+    if (meeting?.source === 'capture') router.replace({ pathname: '/capture/[id]', params: { id: meeting.id } });
+  }, [meeting?.source, meeting?.id]);
 
   const showActions = isEnabled('actionItems');
   const segments = [
@@ -193,6 +199,7 @@ export function MeetingDetailScreen() {
           )
         }
       />
+      <MeetingPrepCard meeting={meeting} />
       {meeting.report ? <ScoresRow report={meeting.report} /> : null}
       <SegmentedControl options={segments} value={activeSegment} onChange={setSegment} />
 

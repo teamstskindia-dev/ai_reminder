@@ -63,7 +63,7 @@ export class AssistantService {
       if (!owned) throw AppException.notFound('Meeting');
     }
     let thread = input.threadId
-      ? await this.prisma.assistantThread.findFirst({ where: { id: input.threadId, userId } })
+      ? await this.prisma.assistantThread.findFirst({ where: { id: input.threadId, userId, kind: 'ask' } })
       : null;
     if (input.threadId && !thread) throw AppException.notFound('Thread');
 
@@ -195,12 +195,12 @@ export class AssistantService {
   async listThreads(userId: string, page: number, limit: number): Promise<Paginated<AssistantThread>> {
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.assistantThread.findMany({
-        where: { userId },
+        where: { userId, kind: 'ask' },
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.assistantThread.count({ where: { userId } }),
+      this.prisma.assistantThread.count({ where: { userId, kind: 'ask' } }),
     ]);
     return Paginated.of(rows.map(toThread), total, page, limit);
   }

@@ -20,7 +20,8 @@ import { ApiDataResponse, ApiErrors, ApiPaginatedResponse } from '../../common/s
 import { QueuedResult } from '../../common/swagger/common-results.dto';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import { CreateMeetingDto, ListMeetingsQueryDto, UpdateMeetingDto, UploadMeetingDto } from './dto/meetings.dto';
-import { MeetingDetail, MeetingListItem, TranscriptSegment } from './dto/meetings.responses.dto';
+import { MeetingDetail, MeetingListItem, MeetingPrep, TranscriptSegment } from './dto/meetings.responses.dto';
+import { MeetingPrepService } from './meeting-prep.service';
 import { MeetingsService } from './meetings.service';
 import { UploadService } from './upload.service';
 import type { UploadedFile as UploadedFileType } from './upload.service';
@@ -32,6 +33,7 @@ export class MeetingsController {
   constructor(
     private readonly meetings: MeetingsService,
     private readonly uploads: UploadService,
+    private readonly prep: MeetingPrepService,
   ) {}
 
   @Get()
@@ -82,6 +84,19 @@ export class MeetingsController {
   @ApiErrors('NOT_FOUND')
   get(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.meetings.get(userId, id);
+  }
+
+  @Get(':id/prep')
+  @ApiOperation({
+    summary: 'Get the pre-meeting brief',
+    description:
+      'Who is coming, what you last discussed with them, open promises both ways, suggested talking points ' +
+      '(cached for a few hours), overlapping meetings and the next back-to-back meeting.',
+  })
+  @ApiDataResponse(MeetingPrep)
+  @ApiErrors('NOT_FOUND')
+  getPrep(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.prep.build(userId, id);
   }
 
   @Get(':id/transcript')

@@ -90,6 +90,13 @@ function allowInternal(pathname: string, query: Record<string, string>): { path:
   if (first === 'meeting' && UUID_RE.test(second)) return { path: `/meeting/${second.toLowerCase()}`, feature: null };
   if (first === 'reminder' && UUID_RE.test(second)) return { path: `/reminder/${second.toLowerCase()}`, feature: 'reminders' };
   if (first === 'nudge' && UUID_RE.test(second)) return { path: `/nudge/${second.toLowerCase()}`, feature: null };
+  if (first === 'capture' && second === 'record') {
+    // From "Meeting starting: record it?" / "Add quick notes?": linked to that calendar meeting.
+    const meetingId = query.meetingId && UUID_RE.test(query.meetingId) ? query.meetingId.toLowerCase() : null;
+    const notes = query.mode === 'notes' ? '&mode=notes' : '';
+    return { path: meetingId ? `/capture/record?meetingId=${meetingId}${notes}` : '/capture/record', feature: null };
+  }
+  if (first === 'capture' && UUID_RE.test(second)) return { path: `/capture/${second.toLowerCase()}`, feature: null };
   if ((first === 'page' || first === 'p') && second.length <= 80 && SLUG_RE.test(second)) {
     return { path: `/page/${second}`, feature: null };
   }

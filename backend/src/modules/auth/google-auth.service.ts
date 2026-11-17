@@ -8,7 +8,7 @@ import type { ClientContext } from '../../common/http/request.types';
 import { AppException, causeChain } from '../../common/errors/app.exception';
 import { securityLog } from '../../common/logging/security-log';
 import { encryptString, randomToken } from '../../common/utils/crypto.util';
-import { CALENDAR_SCOPE, GoogleOAuthService, GoogleProfile } from '../../infra/google/google-oauth.service';
+import { GoogleOAuthService, GoogleProfile, hasCalendarScope } from '../../infra/google/google-oauth.service';
 import { QUEUE } from '../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import type { UserRow } from '../../infra/prisma/models';
@@ -184,7 +184,7 @@ export class GoogleAuthService {
 
     const key = this.config.encryptionKey;
     const scope = tokens.scope ?? '';
-    const calendarConnected = scope.split(' ').includes(CALENDAR_SCOPE);
+    const calendarConnected = hasCalendarScope(scope);
     const existing = await this.googleAccounts.find(user.id);
     const fields = {
       googleEmail: profile.email,

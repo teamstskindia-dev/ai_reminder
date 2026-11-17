@@ -31,6 +31,10 @@ export const JOB = {
   NIGHTLY: 'nightly',
   WEEKLY_RECAP: 'weekly-recap',
   NUDGE: 'nudge',
+  /** "Meeting starting: record it?" at the event start (user-flow §06). */
+  MEETING_START: 'meeting-start',
+  /** "Add quick notes?" after an event that was not recorded. */
+  MEETING_NOTES: 'meeting-notes',
 } as const;
 
 /** Custom job ids (BullMQ forbids ':' in custom ids). */
@@ -45,6 +49,8 @@ export const JobId = {
   /** One per user and local day (or week start for the recap): `morning-brief-<user>-2026-11-14`. */
   rhythm: (kind: string, userId: string, day: string) => `${kind}-${userId}-${day}`,
   nudge: (nudgeId: string) => `nudge-${nudgeId}`,
+  meetingStart: (meetingId: string) => `meeting-start-${meetingId}`,
+  meetingNotes: (meetingId: string) => `meeting-notes-${meetingId}`,
   /** One job per webhook delivery id: Recall.ai retries reuse the id, so duplicates are dropped by BullMQ. */
   recallEvent: (webhookId: string) => `recall-${webhookId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100)}`,
 };
@@ -108,6 +114,11 @@ export interface RhythmJob {
 }
 export interface NudgeJob {
   nudgeId: string;
+}
+/** `at` (ISO) is the start / end time it was scheduled for: a rescheduled meeting makes the job stale. */
+export interface MeetingPromptJob {
+  meetingId: string;
+  at: string;
 }
 export interface BroadcastJob {
   broadcastId: string;
