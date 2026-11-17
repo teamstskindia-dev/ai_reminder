@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: 'remi',
   userInterfaceStyle: 'automatic',
   ios: {
-    bundleIdentifier: 'com.remi.app',
+    bundleIdentifier: 'com.tskindia.remi',
     buildNumber: String(BUILD_NUMBER),
     supportsTablet: true,
     icon: './assets/images/icon.png',
