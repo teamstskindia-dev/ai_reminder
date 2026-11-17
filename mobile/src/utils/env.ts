@@ -5,8 +5,10 @@ function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-/** Backend origin, e.g. http://localhost:4000 (clients append /api/v1 themselves). */
-export const API_ORIGIN = trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000');
+const DEFAULT_API_ORIGIN = __DEV__ ? 'http://localhost:4000' : 'https://api.leogix.io';
+
+/** Backend origin, e.g. https://api.leogix.io (clients append /api/v1 themselves). */
+export const API_ORIGIN = trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_ORIGIN);
 
 export const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 
