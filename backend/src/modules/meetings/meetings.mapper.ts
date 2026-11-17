@@ -40,6 +40,7 @@ export const MEETING_DETAIL_INCLUDE = {
   report: true,
   participants: { orderBy: { talkTimeSeconds: 'desc' } },
   actionItems: { orderBy: { createdAt: 'asc' } },
+  recordings: { select: { id: true }, orderBy: { createdAt: 'desc' }, take: 1 },
 } satisfies Prisma.MeetingInclude;
 
 export type MeetingListRow = Prisma.MeetingGetPayload<{ include: typeof MEETING_LIST_INCLUDE }>;
@@ -163,6 +164,7 @@ export function toMeetingDetail(row: MeetingDetailRow): MeetingDetail {
     botJoinedAt: row.botJoinedAt?.toISOString() ?? null,
     botLeftAt: row.botLeftAt?.toISOString() ?? null,
     failureReason: row.failureReason,
+    recordingId: row.recordings[0]?.id ?? null,
   };
 }
 

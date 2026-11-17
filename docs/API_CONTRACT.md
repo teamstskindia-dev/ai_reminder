@@ -312,9 +312,10 @@ interface AuthTokens {
 // ---------- Meetings ----------
 type MeetingStatus =
   | 'scheduled' | 'joining' | 'waiting_room' | 'in_progress'
+  | 'uploading'                       // captures only: parts are still being sent
   | 'processing' | 'completed' | 'failed' | 'cancelled' | 'skipped';
 
-type MeetingPlatform = 'google_meet' | 'zoom' | 'teams' | 'other';
+type MeetingPlatform = 'google_meet' | 'zoom' | 'teams' | 'other' | 'in_person';
 
 interface Attendee { email: string; name: string | null; responseStatus: string | null; organizer: boolean }
 
@@ -335,7 +336,7 @@ interface MeetingListItem {
   platform: MeetingPlatform;
   meetingUrl: string | null;
   status: MeetingStatus;
-  source: 'calendar' | 'manual' | 'upload';
+  source: 'calendar' | 'manual' | 'upload' | 'capture';   // capture = recorded in the app (see Captures)
   autoJoin: boolean;
   durationSeconds: number | null;
   organizerEmail: string | null;
@@ -377,6 +378,7 @@ interface MeetingDetail extends Omit<MeetingListItem, 'report'> {
   botJoinedAt: ISODate | null;
   botLeftAt: ISODate | null;
   failureReason: string | null;
+  recordingId: string | null;           // latest recording linked to this meeting (recorded on the phone)
 }
 
 interface TranscriptSegment {
@@ -428,17 +430,128 @@ interface Reminder {
 type NotificationType =
   | 'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder'
   | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome'
-  | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap';
+  | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap'
+  | 'capture_ready' | 'meeting_start' | 'meeting_notes';
 
 interface AppNotification {
   id: string;
   type: NotificationType;
   title: string;
   body: string | null;
-  data: { meetingId?: string; actionItemId?: string; reminderId?: string; url?: string; [k: string]: unknown };
+  data: { meetingId?: string; actionItemId?: string; reminderId?: string; captureId?: string; url?: string; [k: string]: unknown };
   readAt: ISODate | null;
   createdAt: ISODate;
 }
+
+// ---------- Tap to record a conversation (user-flow §04) ----------
+// A capture is a meeting with source 'capture' and platform 'in_person'.
+type CaptureStatus = 'uploading' | 'processing' | 'completed' | 'failed';
+type CaptureMood = 'happy' | 'calm' | 'neutral' | 'stressed' | 'low';
+
+interface CaptureBookmark { atMs: number; label: string | null }        // offset, pauses excluded
+interface CapturePerson { name: string; relation: string | null; notes: string[] }
+interface CaptureSuggestionOption { label: string; title: string; remindAt: ISODate | null }
+
+/** A reminder the friend did not set because something was unclear ("Rohit or Rahul?"). */
+interface CaptureSuggestion {
+  id: string;
+  title: string;
+  body: string | null;
+  remindAt: ISODate | null;
+  question: string;
+  options: CaptureSuggestionOption[];   // each one is the reminder with that answer applied
+  status: 'open' | 'confirmed' | 'dismissed';
+  reminderId: string | null;            // set when confirmed
+}
+
+interface CaptureInsights {
+  people: CapturePerson[];
+  userFacts: string[];                  // proposed lasting facts about the user
+  savedFacts: string[];                 // the ones the user chose to remember
+  mood: CaptureMood | null;
+  energy: number | null;                // 1..5
+  suggestions: CaptureSuggestion[];
+}
+
+interface CaptureListItem {
+  id: string;
+  title: string;
+  status: CaptureStatus;
+  startAt: ISODate;
+  durationSeconds: number | null;
+  summaryPreview: string | null;
+  actionItemCount: number;
+  reminderCount: number;                // pending, sent or done
+  openSuggestionCount: number;
+  reviewedAt: ISODate | null;
+  failureReason: string | null;
+  noSpeech: boolean;                    // failed because there was no usable speech
+  createdAt: ISODate;
+}
+
+interface CaptureDetail extends CaptureListItem {
+  summary: string | null;
+  keyPoints: string[];
+  decisions: string[];
+  bookmarks: CaptureBookmark[];
+  actionItems: ActionItem[];
+  reminders: Reminder[];
+  insights: CaptureInsights | null;
+  partsUploaded: number;
+  audioKept: boolean;                   // only while uploading, or after a failure (to retry)
+  linkedMeeting: MeetingRef | null;     // the calendar meeting it belongs to
+  eventSuggestions: MeetingRef[];       // meetings around that time it may belong to (when not linked)
+  followUp: FollowUpDraft | null;       // recap email draft for the attendees
+}
+
+interface MeetingRef { id: string; title: string; startAt: ISODate; endAt: ISODate | null }
+
+/** Sent from the user's own email app after they approve it; never sent by the server. */
+interface FollowUpDraft {
+  to: { name: string | null; email: string }[];
+  subject: string;
+  body: string;
+  status: 'draft' | 'sent' | 'skipped';
+}
+
+// ---------- Google Calendar and meetings (user-flow §06) ----------
+interface MeetingPrep {
+  meetingId: string;
+  title: string;
+  startAt: ISODate;
+  endAt: ISODate | null;
+  attendees: { name: string | null; email: string }[];
+  lastDiscussed: { id: string; title: string; startAt: ISODate; summaryPreview: string | null; isCapture: boolean }[];
+  promises: { mine: ActionItem[]; theirs: ActionItem[] };   // open to-dos from those conversations
+  talkingPoints: string[];              // AI, cached for a few hours
+  conflicts: MeetingRef[];              // double-booked
+  nextUp: MeetingRef | null;            // starts within 15 min of this one ending
+  recordingId: string | null;
+}
+
+// ---------- Talk with your friend (user-flow §05) ----------
+type TalkIntent = 'vent' | 'advice' | 'recall' | 'task' | 'chat';
+
+type TalkAction =
+  | { id; type: 'reminder'; status: 'done' | 'failed'; title; remindAt; reminderId; note }
+  | { id; type: 'meeting'; status: 'proposed' | 'scheduled' | 'cancelled' | 'needs_connection' | 'failed';
+      title; startAt; endAt; attendees: { name; email | null }[]; eventId; note }
+  | { id; type: 'email'; status: 'proposed' | 'sent' | 'cancelled'; to; subject; body; note }
+  | { id; type: 'task'; status: 'done' | 'failed'; title; tool; actionItemId; note }
+  | { id; type: 'unavailable'; status: 'info'; feature: 'email_read' | 'tool'; note };
+
+interface TalkMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources: AssistantSource[];           // memory the answer used (recordings and meetings)
+  actions: TalkAction[];
+  intent: TalkIntent | null;
+  crisis: boolean;                      // the app shows helpline resources
+  createdAt: ISODate;
+}
+
+interface TalkReply { threadId: string | null; userMessage: TalkMessage; reply: TalkMessage }  // threadId null = incognito
 
 // ---------- Daily rhythm (user-flow §03) ----------
 interface CompanionMessage { role: 'user' | 'assistant'; content: string; at: ISODate }
@@ -479,6 +592,7 @@ interface TodayBrief {
   openItems: ActionItem[];              // open to-dos and promises, soonest due first (max 5)
   checkin: { time: string; status: 'off' | 'upcoming' | 'due' | DailyCheckin['status']; mood: number | null };
   nudge: CompanionNudge | null;         // today's nudge once sent, until dismissed
+  overlapIds: string[];                 // today's meetings that overlap another one (double-booked)
 }
 
 interface MoodPoint { date: string; mood: number | null; energy: number | null }
@@ -675,6 +789,7 @@ To reconnect, the client restarts the `/auth/google` flow.
 | GET | `/meetings` | `scope=upcoming\|past\|all` (default `all`), `status?`, `q?`, `from?`, `to?`, `page`, `limit`, `sort?` (`startAt:asc\|desc`; upcoming defaults to asc, others desc) | `MeetingListItem[]` + `meta` |
 | GET | `/meetings/:id` | — | `MeetingDetail` |
 | GET | `/meetings/:id/transcript` | — | `TranscriptSegment[]` |
+| GET | `/meetings/:id/prep` | — (pre-meeting brief) | `MeetingPrep` |
 | POST | `/meetings` | `{ title: string; meetingUrl: string; startAt: ISODate; endAt?: ISODate; autoJoin?: boolean }` (manual add; Meet URL validated) | `MeetingDetail` |
 | PATCH | `/meetings/:id` | `{ title?: string; autoJoin?: boolean }` | `MeetingDetail` |
 | DELETE | `/meetings/:id` | — | `204` |
@@ -682,6 +797,44 @@ To reconnect, the client restarts the `/auth/google` flow.
 | POST | `/meetings/:id/bot/leave` | — | `MeetingDetail` |
 | POST | `/meetings/:id/reprocess` | — | `{ queued: true }` |
 | POST | `/meetings/upload` | `multipart/form-data`: `file` (audio ≤ 200 MB: mp3, m4a, wav, webm, ogg; or transcript ≤ 5 MB: txt, vtt, srt), `title`, `startAt?` | `MeetingDetail` (status `processing`) |
+
+### Captures (tap to record a conversation)
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/captures` | `limit=1..50` (default 10) | `CaptureListItem[]` (newest first) |
+| POST | `/captures` | `{ clientId: uuid; startedAt: ISODate; title? }` (idempotent on `clientId`; status `uploading`) | `CaptureDetail` |
+| PUT | `/captures/:id/parts/:index` | `multipart/form-data`: `file` (audio ≤ 50 MB), `durationMs`. The same index again replaces it (120/min) | `{ index; partsUploaded }` |
+| POST | `/captures/:id/finish` | `{ partCount; durationMs; title?; bookmarks?: CaptureBookmark[] }` (parts 0..partCount-1 must all be in; at least 1.5 s; safe to repeat) | `CaptureDetail` (status `processing`) |
+| GET | `/captures/:id` | — | `CaptureDetail` |
+| PATCH | `/captures/:id` | `{ title?; linkedMeetingId?: uuid \| null }` (linking copies the attendees and drafts a follow-up) | `CaptureDetail` |
+| POST | `/captures/:id/follow-up` | `{ status: 'sent' \| 'skipped'; subject?; body? }` (the app sent it from the user's email app) | `CaptureDetail` |
+| POST | `/captures/:id/review` | `{ suggestions?: { id; action: 'confirm' \| 'dismiss'; title?; remindAt? }[]; saveFacts?: string[] }` (confirmed reminders are scheduled; facts go to the profile; marks it reviewed) | `CaptureDetail` |
+| POST | `/captures/:id/retry` | — (only failed with the audio kept, not `noSpeech`) | `CaptureDetail` |
+| DELETE | `/captures/:id` | — (removes audio, transcript, summary and to-dos; cancels pending reminders) | `204` |
+
+The app records in parts of about 5 minutes (a crash loses at most the current part) and keeps them on the phone until `finish` succeeds, so recording works offline. Processing transcribes each part (English and Hinglish, speakers), joins them, writes the summary, to-dos and reminders, then extracts people, facts about the user and mood. Clear reminders are scheduled; a reminder whose person, day or time is unclear (or missing) becomes a `CaptureSuggestion` instead. When done the user gets `capture_ready` (push + in-app, `data.captureId`, opens `/capture/:id`) and the raw audio is deleted; after a failure the audio is kept for `retry`. Unreviewed suggestions from the day are mentioned in the evening check-in. Captures also appear in `/meetings` (source `capture`) and feed Ask AI. `POST /captures` also takes `meetingId` (the calendar meeting it belongs to: "Meeting starting: record it?" and quick notes); a recording linked to a meeting with attendees gets a drafted follow-up email.
+
+### Calendar and meetings (user-flow §06)
+
+- Google sign-in asks for `calendar.events` (read and write). Accounts connected earlier with `calendar.events.readonly` keep syncing; scheduling asks them to reconnect.
+- Sync now keeps every timed event, including in-person ones without a video link (`platform: 'in_person'`, no `meetingUrl`); all-day events are skipped.
+- **Pre-meeting brief**: the `meeting_upcoming` push now goes `meetingReminderMinutes` before (default **30**) with a prep line (who is coming, a double-booking warning, and for back-to-back meetings the next one too, whose own brief is then folded into this one). It opens the meeting, which shows `GET /meetings/:id/prep`.
+- **Meeting starting: record it?** (`meeting_start`) at the start time, unless the notetaker bot joins or it is already being recorded; **Add quick notes?** (`meeting_notes`) 2 minutes after the end when nothing was recorded (not in quiet hours). Both carry `data.url` = `/capture/record?meetingId=…` (`&mode=notes`). Rescheduling moves them; cancelling removes them.
+- `TodayBrief.overlapIds` and the brief headline flag double-booked meetings.
+
+### Talk (user-flow §05)
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| POST | `/talk/messages` | `{ text; threadId?; incognito?: boolean; history?: { role; content }[] }` (`history` only for incognito; 20/min; shares the plan's daily AI quota with Ask AI) | `TalkReply` |
+| POST | `/talk/schedule` | `{ messageId?; actionId?; title; startAt; endAt; attendees: { name?; email }[] }` (after the user approved a meeting proposal; Google sends the invites) | `{ eventId; htmlLink; message: TalkMessage \| null }` |
+| POST | `/talk/actions/status` | `{ messageId; actionId; status: 'sent' \| 'cancelled' }` (email sent from the user's mail app, or a proposal dropped) | `TalkMessage` |
+| GET | `/talk/threads` | `page`, `limit` | `{ id; title; createdAt; updatedAt }[]` + `meta` |
+| GET | `/talk/threads/:id/messages` | — | `TalkMessage[]` (oldest first) |
+| DELETE | `/talk/threads/:id` | — | `204` |
+
+Each message searches memory (pgvector over recordings and meetings), then the friend answers in the user's language style and relationship stage. It works out the intent (vent, advice, recall, task, chat). Reminders are set right away; things that affect others are only proposed: a meeting gets a free slot from the synced calendar and the guest's email from past meetings, then waits for approval; an email draft opens in the user's own mail app. Unconnected tools fall back to an in-app to-do; reading email is not available yet. The reply is rewritten when an action did not do what the model said (it never claims "scheduled" for a proposal). New lasting facts go to the profile. Incognito saves and learns nothing. Signs of crisis set `crisis` and the reply shares Tele-MANAS (14416). Talk threads are `kind: 'talk'` and are not listed by Ask AI.
 
 ### Action items
 

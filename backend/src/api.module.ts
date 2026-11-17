@@ -33,6 +33,8 @@ import { BotSchedulingModule } from './modules/bot/bot-scheduling.module';
 import { RecallWebhookController } from './modules/bot/recall/recall-webhook.controller';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CompanionController } from './modules/companion/companion.controller';
+import { CapturesModule } from './modules/captures/captures.module';
+import { TalkModule } from './modules/talk/talk.module';
 import { CompanionModule } from './modules/companion/companion.module';
 import { TodayService } from './modules/companion/today.service';
 import { ContentModule } from './modules/content/content.module';
@@ -94,6 +96,8 @@ class StorageBootstrap implements OnApplicationBootstrap {
     ContentModule,
     AdminModule,
     CompanionModule,
+    CapturesModule,
+    TalkModule,
   ],
   controllers: [
     HealthController,

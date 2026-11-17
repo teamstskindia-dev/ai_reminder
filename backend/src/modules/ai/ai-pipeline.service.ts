@@ -5,6 +5,7 @@ import type { MeetingRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PermanentJobError } from '../../infra/queue/base.processor';
+import { StorageService } from '../../infra/storage/storage.service';
 import { MeetingEventsService } from '../meetings/meeting-events.service';
 import { summaryPreview, toAttendees } from '../meetings/meetings.mapper';
 import { MeetingsRepository, TranscriptRepository } from '../meetings/meetings.repository';
@@ -12,14 +13,39 @@ import { NotificationProducer } from '../notifications/notification-producer.ser
 import { ReminderSchedulerService } from '../reminders/reminder-scheduler.service';
 import { RemindersRepository } from '../reminders/reminders.repository';
 import { DEFAULT_REMINDER_CHANNELS, RemindersService } from '../reminders/reminders.service';
+import { CaptureInsightsService, type InsightsResult } from './capture-insights.service';
 import { EmbeddingService } from './embedding.service';
 import { ReportGeneratorService } from './report-generator.service';
 import type { ReportOutput } from './report.schema';
 import { computeTalkStats, transcriptDurationSeconds } from './talk-time';
 import { formatTranscriptLines } from './transcript-format';
-import { TranscriptionService } from './transcription.service';
+import { toRecordingParts, TranscriptionService } from './transcription.service';
 
-/** Report → action items → participants → reminders → embeddings → completed (HLD §5.3). */
+/** Failure reason for a recording without usable speech (captures show "nothing to process"). */
+export const NO_SPEECH_REASON = 'transcription: no speech was found in the recording';
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** "3 to-dos, 1 reminder found" / "1 thing to confirm" / "Summary ready" for the capture_ready push. */
+export function captureFoundText(todos: number, reminders: number, toConfirm: number): string {
+  const found = [
+    todos ? plural(todos, 'to-do', 'to-dos') : null,
+    reminders ? plural(reminders, 'reminder', 'reminders') : null,
+  ].filter(Boolean);
+  const parts = [
+    found.length ? `${found.join(', ')} found` : null,
+    toConfirm ? plural(toConfirm, 'thing', 'things') + ' to confirm' : null,
+  ];
+  return parts.filter(Boolean).join(', ') || 'Summary ready';
+}
+
+/**
+ * Report → action items → participants → reminders → embeddings → completed (HLD §5.3).
+ * Captures (recorded conversations, user-flow §04) are transcribed part by part, get insights (people,
+ * facts, mood) and keep unclear reminders as suggestions; their raw audio is deleted once processed.
+ */
 @Injectable()
 export class AiPipelineService {
   private readonly logger = new Logger(AiPipelineService.name);
@@ -37,6 +63,8 @@ export class AiPipelineService {
     private readonly reminderScheduler: ReminderSchedulerService,
     private readonly notifications: NotificationProducer,
     private readonly config: AppConfig,
+    private readonly captureInsights: CaptureInsightsService,
+    private readonly storage: StorageService,
   ) {}
 
   async process(
@@ -48,18 +76,25 @@ export class AiPipelineService {
     if (meeting.status === 'cancelled') throw new PermanentJobError('Meeting was cancelled');
     if (meeting.status !== 'processing') await this.events.setStatus(meeting.id, 'processing', { failureReason: null });
 
+    const isCapture = meeting.source === 'capture';
+    const parts = toRecordingParts(meeting.recordingParts);
     if (opts.transcribe) {
-      if (!meeting.recordingPath) throw new PermanentJobError('upload: no recording to transcribe');
-      const segments = await this.transcription.transcribe(meeting.recordingPath);
-      if (!segments.length) throw new PermanentJobError('transcription: no speech was found in the recording');
-      await this.transcripts.replaceAll(meeting.id, segments);
+      let transcribed;
+      if (parts.length) {
+        transcribed = await this.transcription.transcribeParts(parts);
+      } else {
+        if (!meeting.recordingPath) throw new PermanentJobError('upload: no recording to transcribe');
+        transcribed = await this.transcription.transcribe(meeting.recordingPath);
+      }
+      if (!transcribed.length) throw new PermanentJobError(NO_SPEECH_REASON);
+      await this.transcripts.replaceAll(meeting.id, transcribed);
     }
 
     const segments = await this.transcripts.listAll(meeting.id);
     if (!segments.length) throw new PermanentJobError('ai: the meeting has no transcript to process');
     const user = await this.prisma.user.findUnique({
       where: { id: meeting.userId },
-      select: { name: true, email: true, timezone: true },
+      select: { name: true, email: true, timezone: true, profile: { select: { languageStyle: true } } },
     });
     if (!user) throw new PermanentJobError('User no longer exists');
 
@@ -77,10 +112,40 @@ export class AiPipelineService {
     const report = generated.output;
     const stats = computeTalkStats(segments);
 
+    let insights: InsightsResult | null = null;
+    if (isCapture) {
+      insights = await this.captureInsights.generate({
+        lines: lines.join('\n'),
+        reminders: report.reminders,
+        userName: user.name ?? user.email,
+        timezone: user.timezone,
+        languageStyle: user.profile?.languageStyle ?? 'english',
+      });
+      // Recorded meeting with attendees (linked calendar event): draft the recap email (user-flow §06).
+      const recipients = attendees
+        .filter((a) => a.email && a.email.toLowerCase() !== user.email.toLowerCase())
+        .map((a) => ({ name: a.name, email: a.email }));
+      const followUp = recipients.length
+        ? await this.captureInsights.followUp({
+            userName: user.name ?? user.email,
+            title: meeting.title,
+            attendees: recipients,
+            summary: report.summary,
+            decisions: report.decisions,
+            actionItems: report.actionItems.map((a) => ({
+              title: a.title,
+              assigneeName: a.assigneeName,
+              dueAt: a.dueAt,
+            })),
+          })
+        : null;
+      if (followUp) insights.extra = { followUp };
+    }
+
     const oldAiReminders = await this.reminders.pendingAiForMeeting(meeting.id);
-    await this.saveReport(meeting, report, generated.model, generated.promptVersion, stats, attendees);
+    await this.saveReport(meeting, report, generated.model, generated.promptVersion, stats, attendees, insights);
     for (const r of oldAiReminders) await this.reminderScheduler.unschedule(r.id);
-    const reminderCount = await this.createReminders(meeting, report);
+    const reminderCount = await this.createReminders(meeting, report, insights?.heldBack);
 
     let chunks = 0;
     try {
@@ -96,6 +161,32 @@ export class AiPipelineService {
 
     const durationSeconds = meeting.durationSeconds ?? transcriptDurationSeconds(segments);
     await this.events.setStatus(meeting.id, 'completed', { durationSeconds, failureReason: null });
+
+    if (isCapture) {
+      // Raw audio is not kept: only the transcript, summary and extracted items stay.
+      const paths = [...parts.map((p) => p.path), ...(meeting.recordingPath ? [meeting.recordingPath] : [])];
+      await this.storage.remove(paths);
+      await this.meetings.update(meeting.id, { recordingParts: [], recordingPath: null });
+      const toConfirm = insights?.insights.suggestions.length ?? 0;
+      await this.notifications.notify({
+        userId: meeting.userId,
+        type: 'capture_ready',
+        templateKey: 'capture_ready',
+        vars: {
+          title: meeting.title,
+          foundText: captureFoundText(report.actionItems.length, reminderCount, toConfirm),
+          summaryPreview: summaryPreview(report.summary, 140),
+        },
+        data: { captureId: meeting.id, url: `/capture/${meeting.id}` },
+        channels: ['push', 'in_app'],
+      });
+      this.logger.log(
+        { meetingId, actionItems: report.actionItems.length, reminders: reminderCount, toConfirm, chunks },
+        'capture processed',
+      );
+      return { actionItems: report.actionItems.length, reminders: reminderCount, chunks };
+    }
+
     await this.notifications.notify({
       userId: meeting.userId,
       type: 'report_ready',
@@ -130,9 +221,13 @@ export class AiPipelineService {
     promptVersion: number | null,
     stats: ReturnType<typeof computeTalkStats>,
     attendees: ReturnType<typeof toAttendees>,
+    insights: InsightsResult | null = null,
   ): Promise<void> {
     const emailByName = new Map(attendees.filter((a) => a.name).map((a) => [a.name!.toLowerCase(), a.email]));
     const reportData = {
+      ...(insights
+        ? { insights: { ...insights.insights, ...insights.extra } as unknown as Prisma.InputJsonValue }
+        : {}),
       userId: meeting.userId,
       summary: report.summary,
       keyPoints: report.keyPoints as Prisma.InputJsonValue,
@@ -192,10 +287,12 @@ export class AiPipelineService {
     });
   }
 
-  private async createReminders(meeting: MeetingRow, report: ReportOutput): Promise<number> {
+  /** Schedules the report's reminders, except `heldBack` ones (capture suggestions waiting for the user). */
+  private async createReminders(meeting: MeetingRow, report: ReportOutput, heldBack?: Set<number>): Promise<number> {
     const now = Date.now();
     let count = 0;
-    for (const r of report.reminders) {
+    for (const [i, r] of report.reminders.entries()) {
+      if (heldBack?.has(i)) continue;
       if (!r.remindAt || new Date(r.remindAt).getTime() <= now + 60_000) continue;
       await this.remindersService.createAndSchedule({
         userId: meeting.userId,
@@ -218,6 +315,24 @@ export class AiPipelineService {
     if (!meeting || meeting.status === 'completed' || meeting.status === 'cancelled') return;
     const failureReason = reason.slice(0, 300);
     await this.events.setStatus(meetingId, 'failed', { failureReason });
+    if (meeting.source === 'capture') {
+      // The audio is kept so the user can retry; nothing to retry when there was no speech.
+      const noSpeech = failureReason === NO_SPEECH_REASON;
+      await this.notifications.notify({
+        userId: meeting.userId,
+        type: 'capture_ready',
+        templateKey: 'reminder',
+        vars: {
+          title: noSpeech ? `Nothing to process in "${meeting.title}"` : `We couldn't process "${meeting.title}"`,
+          body: noSpeech
+            ? 'The recording had no speech we could understand.'
+            : 'Your recording is saved. Open it to try again.',
+        },
+        data: { captureId: meetingId, url: `/capture/${meetingId}` },
+        channels: ['in_app', 'push'],
+      });
+      return;
+    }
     await this.notifications.notify({
       userId: meeting.userId,
       type: 'reminder',

@@ -1,3 +1,5 @@
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve, sep } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppConfig } from '../../config/app-config';
@@ -7,11 +9,16 @@ import { callExternal } from '../external/external-call';
 /**
  * Supabase Storage (service role, server only) for the private `recordings` bucket.
  * supabase-js is used exclusively for Storage; all database access goes through Prisma.
+ *
+ * Outside production, when Supabase is not configured, files go to a local folder instead
+ * (`.data/storage/{bucket}` under the backend's working directory) so recordings can be tested on one
+ * machine. The api and the worker must then share that folder (they do when run side by side).
  */
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: SupabaseClient | null;
+  private readonly localRoot: string | null;
   readonly bucket: string;
 
   constructor(config: AppConfig) {
@@ -23,10 +30,12 @@ export class StorageService {
             auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
           })
         : null;
+    this.localRoot =
+      !this.client && !config.isProduction ? resolve(process.cwd(), '.data', 'storage', this.bucket) : null;
   }
 
   get configured(): boolean {
-    return this.client !== null;
+    return this.client !== null || this.localRoot !== null;
   }
 
   private get storage() {
@@ -34,8 +43,20 @@ export class StorageService {
     return this.client.storage;
   }
 
+  /** Absolute local path for a storage path, refusing anything that escapes the local root. */
+  private localPath(path: string): string {
+    const root = this.localRoot as string;
+    const full = resolve(root, path);
+    if (!full.startsWith(root + sep)) throw AppException.badRequest('Invalid storage path');
+    return full;
+  }
+
   /** Creates the private recordings bucket when missing. Never throws (logs instead). */
   async ensureBucket(): Promise<void> {
+    if (this.localRoot) {
+      this.logger.warn(`Supabase Storage not configured: using local files in ${this.localRoot} (development only)`);
+      return;
+    }
     if (!this.client) {
       this.logger.warn('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set: uploads are disabled');
       return;
@@ -52,6 +73,12 @@ export class StorageService {
   }
 
   async upload(path: string, body: Buffer, contentType: string): Promise<void> {
+    if (this.localRoot) {
+      const full = this.localPath(path);
+      await mkdir(dirname(full), { recursive: true });
+      await writeFile(full, body);
+      return;
+    }
     const bucket = this.storage.from(this.bucket);
     await callExternal({ provider: 'storage', operation: 'upload', retries: 2, timeoutMs: 300_000 }, async () => {
       const { error } = await bucket.upload(path, body, { contentType, upsert: true });
@@ -60,6 +87,7 @@ export class StorageService {
   }
 
   async download(path: string): Promise<Blob> {
+    if (this.localRoot) return new Blob([new Uint8Array(await readFile(this.localPath(path)))]);
     const bucket = this.storage.from(this.bucket);
     return callExternal({ provider: 'storage', operation: 'download', retries: 2, timeoutMs: 300_000 }, async () => {
       const { data, error } = await bucket.download(path);
@@ -69,7 +97,12 @@ export class StorageService {
   }
 
   async remove(paths: string[]): Promise<void> {
-    if (!paths.length || !this.client) return;
+    if (!paths.length) return;
+    if (this.localRoot) {
+      await Promise.all(paths.map((p) => rm(this.localPath(p), { force: true }).catch(() => undefined)));
+      return;
+    }
+    if (!this.client) return;
     const { error } = await this.client.storage.from(this.bucket).remove(paths);
     if (error) this.logger.warn({ provider: 'storage', files: paths.length }, 'could not delete stored files');
   }

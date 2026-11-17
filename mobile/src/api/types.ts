@@ -317,13 +317,14 @@ export type MeetingStatus =
   | 'joining'
   | 'waiting_room'
   | 'in_progress'
+  | 'uploading'
   | 'processing'
   | 'completed'
   | 'failed'
   | 'cancelled'
   | 'skipped';
 
-export type MeetingPlatform = 'google_meet' | 'zoom' | 'teams' | 'other';
+export type MeetingPlatform = 'google_meet' | 'zoom' | 'teams' | 'other' | 'in_person';
 
 export type SentimentLabel = 'positive' | 'neutral' | 'negative';
 
@@ -351,7 +352,8 @@ export interface MeetingListItem {
   platform: MeetingPlatform;
   meetingUrl: string | null;
   status: MeetingStatus;
-  source: 'calendar' | 'manual' | 'upload';
+  /** `capture` = a conversation recorded in the app (open it with /capture/[id]). */
+  source: 'calendar' | 'manual' | 'upload' | 'capture';
   autoJoin: boolean;
   durationSeconds: number | null;
   organizerEmail: string | null;
@@ -405,6 +407,8 @@ export interface MeetingDetail extends Omit<MeetingListItem, 'report'> {
   botJoinedAt: ISODate | null;
   botLeftAt: ISODate | null;
   failureReason: string | null;
+  /** The most recent recording linked to this meeting (recorded on the phone). */
+  recordingId: string | null;
 }
 
 export interface TranscriptSegment {
@@ -540,14 +544,173 @@ export type NotificationType =
   | 'evening_checkin'
   | 'reminder_followup'
   | 'companion_nudge'
-  | 'weekly_recap';
+  | 'weekly_recap'
+  | 'capture_ready'
+  | 'meeting_start'
+  | 'meeting_notes';
 
 export interface NotificationData {
   meetingId?: string;
   actionItemId?: string;
   reminderId?: string;
+  /** A recorded conversation (opens the review card). */
+  captureId?: string;
   url?: string;
   [k: string]: unknown;
+}
+
+// ---------- Tap to record a conversation (captures) ----------
+export type CaptureStatus = 'uploading' | 'processing' | 'completed' | 'failed';
+export type CaptureMood = 'happy' | 'calm' | 'neutral' | 'stressed' | 'low';
+
+export interface CaptureBookmark {
+  atMs: number;
+  label: string | null;
+}
+
+export interface CapturePerson {
+  name: string;
+  relation: string | null;
+  notes: string[];
+}
+
+export interface CaptureSuggestionOption {
+  label: string;
+  title: string;
+  remindAt: ISODate | null;
+}
+
+/** A reminder the friend did not set because something was unclear ("Rohit or Rahul?"). */
+export interface CaptureSuggestion {
+  id: string;
+  title: string;
+  body: string | null;
+  remindAt: ISODate | null;
+  question: string;
+  options: CaptureSuggestionOption[];
+  status: 'open' | 'confirmed' | 'dismissed';
+  reminderId: string | null;
+}
+
+export interface CaptureInsights {
+  people: CapturePerson[];
+  userFacts: string[];
+  savedFacts: string[];
+  mood: CaptureMood | null;
+  energy: number | null;
+  suggestions: CaptureSuggestion[];
+}
+
+export interface CaptureListItem {
+  id: string;
+  title: string;
+  status: CaptureStatus;
+  startAt: ISODate;
+  durationSeconds: number | null;
+  summaryPreview: string | null;
+  actionItemCount: number;
+  reminderCount: number;
+  openSuggestionCount: number;
+  reviewedAt: ISODate | null;
+  failureReason: string | null;
+  noSpeech: boolean;
+  createdAt: ISODate;
+}
+
+export interface CaptureDetail extends CaptureListItem {
+  summary: string | null;
+  keyPoints: string[];
+  decisions: string[];
+  bookmarks: CaptureBookmark[];
+  actionItems: ActionItem[];
+  reminders: Reminder[];
+  insights: CaptureInsights | null;
+  partsUploaded: number;
+  audioKept: boolean;
+  /** The calendar meeting this recording belongs to. */
+  linkedMeeting: MeetingRef | null;
+  /** Calendar meetings around the recording time it may belong to (only when not linked). */
+  eventSuggestions: MeetingRef[];
+  /** Recap email to the attendees, sent from the user's own email app after they approve it. */
+  followUp: FollowUpDraft | null;
+}
+
+export interface MeetingRef {
+  id: string;
+  title: string;
+  startAt: ISODate;
+  endAt: ISODate | null;
+}
+
+export interface FollowUpDraft {
+  to: { name: string | null; email: string }[];
+  subject: string;
+  body: string;
+  status: 'draft' | 'sent' | 'skipped';
+}
+
+// ---------- Google Calendar and meetings (user-flow §06) ----------
+export interface MeetingPrep {
+  meetingId: string;
+  title: string;
+  startAt: ISODate;
+  endAt: ISODate | null;
+  attendees: { name: string | null; email: string }[];
+  lastDiscussed: { id: string; title: string; startAt: ISODate; summaryPreview: string | null; isCapture: boolean }[];
+  promises: { mine: ActionItem[]; theirs: ActionItem[] };
+  talkingPoints: string[];
+  conflicts: MeetingRef[];
+  nextUp: MeetingRef | null;
+  recordingId: string | null;
+}
+
+// ---------- Talk with your friend (user-flow §05) ----------
+export type TalkIntent = 'vent' | 'advice' | 'recall' | 'task' | 'chat';
+
+export type TalkAction =
+  | { id: string; type: 'reminder'; status: 'done' | 'failed'; title: string; remindAt: ISODate | null; reminderId: string | null; note: string | null }
+  | {
+      id: string;
+      type: 'meeting';
+      status: 'proposed' | 'scheduled' | 'cancelled' | 'needs_connection' | 'failed';
+      title: string;
+      startAt: ISODate | null;
+      endAt: ISODate | null;
+      attendees: { name: string | null; email: string | null }[];
+      eventId: string | null;
+      note: string | null;
+    }
+  | { id: string; type: 'email'; status: 'proposed' | 'sent' | 'cancelled'; to: string | null; subject: string; body: string; note: string | null }
+  | { id: string; type: 'task'; status: 'done' | 'failed'; title: string; tool: string; actionItemId: string | null; note: string | null }
+  | { id: string; type: 'unavailable'; status: 'info'; feature: 'email_read' | 'tool'; note: string };
+
+export interface TalkMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources: AssistantSource[];
+  actions: TalkAction[];
+  intent: TalkIntent | null;
+  crisis: boolean;
+  createdAt: ISODate;
+}
+
+export interface TalkReply {
+  threadId: string | null;
+  userMessage: TalkMessage;
+  reply: TalkMessage;
+}
+
+export interface TalkThread {
+  id: string;
+  title: string;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+export interface CaptureReviewInput {
+  suggestions?: { id: string; action: 'confirm' | 'dismiss'; title?: string; remindAt?: string }[];
+  saveFacts?: string[];
 }
 
 export interface AppNotification {
@@ -615,6 +778,8 @@ export interface TodayBrief {
   openItems: ActionItem[];
   checkin: { time: string; status: TodayCheckinStatus; mood: number | null };
   nudge: CompanionNudge | null;
+  /** Ids of today's meetings that overlap another one (double-booked). */
+  overlapIds: string[];
 }
 
 export interface MoodPoint {

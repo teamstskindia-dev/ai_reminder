@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Bot, ListChecks, Users } from 'lucide-react-native';
+import { Bot, ListChecks, TriangleAlert, Users } from 'lucide-react-native';
 import { memo } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
@@ -18,9 +18,11 @@ export interface MeetingCardProps {
   /** Shows the bot auto-join toggle (upcoming meetings). */
   onToggleAutoJoin?: (meeting: MeetingListItem, value: boolean) => void;
   showDate?: boolean;
+  /** Double-booked with another meeting (Today). */
+  overlapping?: boolean;
 }
 
-function MeetingCardBase({ meeting, onToggleAutoJoin, showDate = true }: MeetingCardProps) {
+function MeetingCardBase({ meeting, onToggleAutoJoin, showDate = true, overlapping = false }: MeetingCardProps) {
   const theme = useTheme();
   const status = meetingStatusMeta(meeting.status);
   const duration = formatDuration(meeting.durationSeconds);
@@ -30,7 +32,13 @@ function MeetingCardBase({ meeting, onToggleAutoJoin, showDate = true }: Meeting
   const toggleable = onToggleAutoJoin && meeting.status === 'scheduled';
 
   return (
-    <Card onPress={() => router.push(`/meeting/${meeting.id}`)} accessibilityLabel={`${meeting.title}, ${when}, ${status.label}`}>
+    <Card
+      onPress={() =>
+        meeting.source === 'capture'
+          ? router.push({ pathname: '/capture/[id]', params: { id: meeting.id } })
+          : router.push(`/meeting/${meeting.id}`)
+      }
+      accessibilityLabel={`${meeting.title}, ${when}, ${status.label}`}>
       <View style={styles.row}>
         <View style={styles.main}>
           <Text variant="subheading" numberOfLines={2}>
@@ -45,6 +53,7 @@ function MeetingCardBase({ meeting, onToggleAutoJoin, showDate = true }: Meeting
       </View>
 
       <View style={styles.meta}>
+        {overlapping ? <Chip label="Overlaps" icon={TriangleAlert} tone="warning" /> : null}
         {meeting.status !== 'completed' || !report ? <Chip label={status.label} tone={status.tone} dot={status.live} /> : null}
         {meeting.attendeeCount > 0 ? <Chip label={String(meeting.attendeeCount)} icon={Users} /> : null}
         {meeting.actionItemCount > 0 ? <Chip label={`${meeting.actionItemCount} action items`} icon={ListChecks} tone="accent" /> : null}

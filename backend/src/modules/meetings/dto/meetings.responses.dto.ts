@@ -93,6 +93,47 @@ export class MeetingDetail extends OmitType(MeetingListItem, ['report'] as const
   @ApiDateTime() botLeftAt: string | null;
   /** Why the bot or the AI pipeline failed (shown to the user). */
   failureReason: string | null;
+  /** The most recent recording linked to this meeting (recorded on the phone). */
+  @ApiUuid() recordingId: string | null;
+}
+
+export class MeetingRefDto implements Contract.MeetingRef {
+  @ApiUuid() id: string;
+  title: string;
+  @ApiDateTime() startAt: string;
+  @ApiDateTime() endAt: string | null;
+}
+
+export class PrepAttendee {
+  name: string | null;
+  email: string;
+}
+
+export class PrepConversation {
+  @ApiUuid() id: string;
+  title: string;
+  @ApiDateTime() startAt: string;
+  summaryPreview: string | null;
+  isCapture: boolean;
+}
+
+export class PrepPromises {
+  @ApiProperty({ type: [ActionItem] }) mine: ActionItem[];
+  @ApiProperty({ type: [ActionItem] }) theirs: ActionItem[];
+}
+
+export class MeetingPrep implements Contract.MeetingPrep {
+  @ApiUuid() meetingId: string;
+  title: string;
+  @ApiDateTime() startAt: string;
+  @ApiDateTime() endAt: string | null;
+  @ApiProperty({ type: [PrepAttendee] }) attendees: PrepAttendee[];
+  @ApiProperty({ type: [PrepConversation] }) lastDiscussed: PrepConversation[];
+  promises: PrepPromises;
+  talkingPoints: string[];
+  @ApiProperty({ type: [MeetingRefDto] }) conflicts: MeetingRefDto[];
+  @ApiProperty({ type: MeetingRefDto, nullable: true }) nextUp: MeetingRefDto | null;
+  @ApiUuid() recordingId: string | null;
 }
 
 export class TranscriptSegment implements Contract.TranscriptSegment {

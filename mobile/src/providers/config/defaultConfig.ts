@@ -65,7 +65,7 @@ export const DEFAULT_CONFIG: PublicConfig = {
       { id: 'default-tab-home', label: 'Today', href: 'home', icon: 'home', groupLabel: null, isExternal: false, sortOrder: 0 },
       { id: 'default-tab-meetings', label: 'Meetings', href: 'meetings', icon: 'meetings', groupLabel: null, isExternal: false, sortOrder: 1 },
       { id: 'default-tab-reminders', label: 'Reminders', href: 'reminders', icon: 'reminders', groupLabel: null, isExternal: false, sortOrder: 2 },
-      { id: 'default-tab-ask', label: 'Ask', href: 'ask', icon: 'ask-ai', groupLabel: null, isExternal: false, sortOrder: 3 },
+      { id: 'default-tab-ask', label: 'Talk', href: 'ask', icon: 'ask-ai', groupLabel: null, isExternal: false, sortOrder: 3 },
       { id: 'default-tab-profile', label: 'Profile', href: 'profile', icon: 'profile', groupLabel: null, isExternal: false, sortOrder: 4 },
     ],
   },

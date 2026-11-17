@@ -5,6 +5,7 @@ import { formatTime, zonedParts } from '../../common/utils/time.util';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ActionItemsService } from '../action-items/action-items.service';
 import { MEETING_LIST_INCLUDE, toMeetingListItem } from '../meetings/meetings.mapper';
+import { overlappingIds } from '../meetings/overlap.util';
 import { REMINDER_INCLUDE, toReminder } from '../reminders/reminders.mapper';
 import { CompanionContextService } from './companion-context.service';
 import { dayHeadline, greeting } from './companion.copy';
@@ -35,7 +36,13 @@ export class TodayService {
 
     const [meetings, reminders, openItems, openCount, checkin, nudge] = await Promise.all([
       this.prisma.meeting.findMany({
-        where: { userId, startAt: { gte: start, lt: end }, status: { notIn: ['cancelled'] } },
+        // Recorded conversations have their own cards on Today.
+        where: {
+          userId,
+          startAt: { gte: start, lt: end },
+          status: { notIn: ['cancelled'] },
+          source: { not: 'capture' },
+        },
         include: MEETING_LIST_INCLUDE,
         orderBy: { startAt: 'asc' },
         take: 10,
@@ -70,6 +77,7 @@ export class TodayService {
         firstMeetingAt: meetings[0] ? formatTime(meetings[0].startAt, tz) : null,
         reminders: reminders.length,
         openItems: openCount,
+        overlaps: overlappingIds(meetings).length,
       }),
       counts: { meetings: meetings.length, reminders: reminders.length, openItems: openCount },
       meetings: meetings.map(toMeetingListItem),
@@ -77,6 +85,7 @@ export class TodayService {
       openItems,
       checkin: { time: s.checkinTime, status: checkinStatus, mood: checkin?.mood ?? null },
       nudge,
+      overlapIds: overlappingIds(meetings),
     };
   }
 }

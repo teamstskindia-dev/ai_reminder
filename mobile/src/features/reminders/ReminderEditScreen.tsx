@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { Bell, Link2, Mail, MessageSquare, SearchX, type LucideIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -19,6 +19,7 @@ import { Text } from '@/components/ui/Text';
 import { TextField } from '@/components/ui/TextField';
 import { useTheme } from '@/theme/ThemeProvider';
 import { toast } from '@/utils/toast';
+import { goBack } from '@/features/navigation/goBack';
 
 const CHANNELS: { value: ReminderChannel; label: string; icon: LucideIcon }[] = [
   { value: 'push', label: 'Push', icon: Bell },
@@ -68,7 +69,7 @@ function ReminderForm({ existing, params }: { existing: Reminder | null; params:
       {
         onSuccess: () => {
           toast(existing ? 'Reminder updated' : 'Reminder set');
-          router.back();
+          goBack();
         },
         onError: (error) => {
           const fields = fieldErrors(error);
@@ -123,7 +124,7 @@ export function ReminderEditScreen() {
     <FeatureGate feature="reminders">
       <Stack.Screen options={{ title: id ? 'Edit reminder' : 'New reminder' }} />
       {id && !existing ? (
-        <EmptyState icon={SearchX} title="Reminder not found" message="It may have been sent or deleted." action={{ label: 'Close', onPress: () => router.back() }} />
+        <EmptyState icon={SearchX} title="Reminder not found" message="It may have been sent or deleted." action={{ label: 'Close', onPress: () => goBack() }} />
       ) : (
         <ReminderForm existing={existing} params={params} />
       )}

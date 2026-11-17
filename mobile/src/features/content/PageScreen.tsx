@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { FileSearch } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { MAX_CONTENT_WIDTH } from '@/theme/tokens';
 import { formatDayLabel } from '@/utils/format';
 import { openLink } from '@/utils/links';
+import { goBack } from '@/features/navigation/goBack';
 
 /** Renders an admin-managed CMS page (about, privacy, terms, …) from GET /public/pages/:slug. */
 export function PageScreen() {
@@ -41,7 +42,7 @@ export function PageScreen() {
             icon={FileSearch}
             title="Page not found"
             message="This page isn't published yet."
-            action={{ label: 'Go back', onPress: () => router.back() }}
+            action={{ label: 'Go back', onPress: () => goBack() }}
           />
         );
       }

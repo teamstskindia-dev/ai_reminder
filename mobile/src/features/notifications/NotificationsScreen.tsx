@@ -9,8 +9,10 @@ import {
   HeartHandshake,
   ListChecks,
   Megaphone,
+  Mic,
   MoonStar,
   Newspaper,
+  NotebookPen,
   PartyPopper,
   Sparkles,
   Sun,
@@ -52,6 +54,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   reminder_followup: BellRing,
   companion_nudge: HeartHandshake,
   weekly_recap: Sparkles,
+  capture_ready: Mic,
+  meeting_start: Mic,
+  meeting_notes: NotebookPen,
 };
 
 const NotificationRow = memo(function NotificationRow({

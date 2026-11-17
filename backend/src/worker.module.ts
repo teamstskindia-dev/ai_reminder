@@ -8,6 +8,7 @@ import { CalendarSyncProcessor } from './modules/calendar/calendar-sync.processo
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CompanionProcessor } from './modules/companion/companion.processor';
 import { CompanionModule } from './modules/companion/companion.module';
+import { MeetingPromptsService } from './modules/companion/meeting-prompts.service';
 import { MorningBriefService } from './modules/companion/morning-brief.service';
 import { NightlyService } from './modules/companion/nightly.service';
 import { RhythmService } from './modules/companion/rhythm.service';
@@ -44,6 +45,7 @@ import { UsersModule } from './modules/users/users.module';
     NotificationsProcessor,
     DigestProcessor,
     MorningBriefService,
+    MeetingPromptsService,
     NightlyService,
     RhythmService,
     CompanionProcessor,
