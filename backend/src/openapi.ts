@@ -42,6 +42,8 @@ const TAGS: [string, string][] = [
   ['analytics', 'Meeting analytics for a date range.'],
   ['meetings', 'Meetings, transcripts, uploads and the meeting bot.'],
   ['action-items', 'Action items extracted by AI or added by hand.'],
+  ['captures', 'Record, upload and review real-world conversations: multi-part upload, AI processing, follow-ups and retries.'],
+  ['talk', 'Free-form chat with your AI friend: send messages, schedule actions, track action status and manage threads.'],
   ['reminders', 'Reminders delivered by push, in-app and email.'],
   ['notifications', 'In-app notification inbox.'],
   ['devices', 'Expo push token registration.'],
