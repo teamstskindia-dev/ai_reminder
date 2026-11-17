@@ -17,12 +17,15 @@ const APP_ENV = (process.env.APP_ENV ?? 'development').trim();
 const IS_DEV = APP_ENV === 'development';
 
 const easProjectId = process.env.EAS_PROJECT_ID?.trim() || undefined;
+/** Expo account (or team) that owns the EAS project. Unset = the signed-in EAS account. */
+const easOwner = process.env.EXPO_OWNER?.trim() || undefined;
 const googleServicesFile = process.env.GOOGLE_SERVICES_JSON?.trim() || undefined;
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Remi',
   slug: 'remi',
+  ...(easOwner ? { owner: easOwner } : {}),
   version: APP_VERSION,
   orientation: 'portrait',
   icon: './assets/images/icon.png',

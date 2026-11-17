@@ -1,4 +1,5 @@
 import type { ErrorBoundaryProps } from 'expo-router';
+import { useSegments } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,9 @@ export default function TabsLayout() {
   const visible = useVisibleTabs();
   const visibleRoutes = new Set(visible.map((t) => t.route));
   const hidden = TAB_ROUTES.filter((route) => !visibleRoutes.has(route));
+  // Talk has its own mic next to the input, so the record button would cover it there.
+  const segments = useSegments();
+  const onTalk = segments[segments.length - 1] === 'ask';
 
   return (
     <View style={styles.root}>
@@ -59,7 +63,7 @@ export default function TabsLayout() {
       ))}
     </Tabs>
       {/* Recording is one tap away from every tab (user-flow §04). */}
-      <RecordFab bottom={60 + bottomPad + 16} />
+      {onTalk ? null : <RecordFab bottom={60 + bottomPad + 16} />}
     </View>
   );
 }
