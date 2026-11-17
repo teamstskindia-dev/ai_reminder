@@ -19,8 +19,12 @@ import { ConnectStep } from './steps/ConnectStep';
 import { ConsentStep, NudgeStep, RhythmStep } from './steps/FinalSteps';
 import { MicStep, NotificationsStep } from './steps/PermissionSteps';
 
-/** Steps that can't be revisited with Back (they act on the OS or are already answered). */
-const NO_BACK_TO: StepKey[] = ['chat', 'mic', 'notifications'];
+/**
+ * Interactive steps where users provide input.
+ * Permission steps (mic, notifications) auto-skip if already granted/checked,
+ * so navigation backward targets interactive steps (chat, connect) or previous config steps.
+ */
+const INTERACTIVE_STEPS: StepKey[] = ['connect', 'chat', 'rhythm', 'consent', 'nudge'];
 
 /**
  * First-run setup after sign-in (user-flow §02 "Onboarding and first run"):
@@ -76,11 +80,18 @@ export function SetupScreen() {
     if (next) setStep(next);
   }, [steps, index]);
 
-  const prev = index > 0 ? steps[index - 1] : null;
-  const canGoBack = Boolean(prev && !NO_BACK_TO.includes(prev) && current !== 'chat');
+  // Find the previous interactive step to go back to (skips auto-forwarding permission steps)
+  const prevInteractive = useMemo(() => {
+    for (let i = index - 1; i >= 0; i--) {
+      if (INTERACTIVE_STEPS.includes(steps[i])) return steps[i];
+    }
+    return null;
+  }, [steps, index]);
+
+  const canGoBack = Boolean(prevInteractive && current !== steps[0]);
   const goBack = useCallback(() => {
-    if (canGoBack && prev) setStep(prev);
-  }, [canGoBack, prev]);
+    if (canGoBack && prevInteractive) setStep(prevInteractive);
+  }, [canGoBack, prevInteractive]);
 
   // Android back: step back inside setup instead of leaving the app half set up.
   useEffect(() => {
