@@ -8,12 +8,12 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 
 /** Single source of truth for the marketing version and the build number (iOS buildNumber / Android versionCode). */
 const APP_VERSION = '1.0.0';
-const BUILD_NUMBER = Number(process.env.APP_BUILD_NUMBER ?? 1);
+const BUILD_NUMBER = Number(process.env.APP_BUILD_NUMBER ?? 2);
 
 const BRAND_PRIMARY = '#5B4FE9';
 
 /** development | preview | production — set per EAS build profile (eas.json). Local runs default to development. */
-const APP_ENV = (process.env.APP_ENV ?? 'development').trim();
+const APP_ENV = (process.env.APP_ENV ?? 'production').trim();
 const IS_DEV = APP_ENV === 'development';
 
 const easProjectId = process.env.EAS_PROJECT_ID?.trim() || undefined;
