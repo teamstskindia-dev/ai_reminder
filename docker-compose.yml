@@ -24,6 +24,8 @@ x-backend: &backend
     DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
     DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/remi
     REDIS_URL: redis://redis:6379
+  volumes:
+    - backend-data:/app/.data
   extra_hosts:
     - host.docker.internal:host-gateway
   restart: unless-stopped
@@ -134,3 +136,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  backend-data:
