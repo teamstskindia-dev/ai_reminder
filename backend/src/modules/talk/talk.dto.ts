@@ -103,6 +103,16 @@ export class TalkScheduleDto {
   attendees: TalkAttendeeDto[];
 }
 
+export class TalkActionRefDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  messageId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  actionId: string;
+}
+
 export class TalkActionStatusDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()

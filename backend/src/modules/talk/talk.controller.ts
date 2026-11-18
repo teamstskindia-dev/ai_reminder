@@ -6,6 +6,7 @@ import { PaginationQueryDto } from '../../common/pagination/pagination';
 import { ApiDataResponse, ApiErrors, ApiPaginatedResponse } from '../../common/swagger/api-docs.decorators';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import {
+  TalkActionRefDto,
   TalkActionStatusDto,
   TalkMessage,
   TalkReply,
@@ -60,6 +61,18 @@ export class TalkController {
   @ApiErrors('NOT_FOUND', 'CONFLICT')
   actionStatus(@CurrentUserId() userId: string, @Body() dto: TalkActionStatusDto) {
     return this.talk.setActionStatus(userId, dto.messageId, dto.actionId, dto.status);
+  }
+
+  @Post('actions/retry')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Retry a meeting that waited for Google Calendar',
+    description: 'After the user connected (or reconnected) the calendar, turns the card into the invite preview.',
+  })
+  @ApiDataResponse(TalkMessage)
+  @ApiErrors('NOT_FOUND', 'CONFLICT')
+  retryAction(@CurrentUserId() userId: string, @Body() dto: TalkActionRefDto) {
+    return this.talk.retryAction(userId, dto.messageId, dto.actionId);
   }
 
   @Get('threads')

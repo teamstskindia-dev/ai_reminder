@@ -46,3 +46,7 @@ example
 .env
 .env.*
 !.env.example
+
+# Firebase / FCM credentials (never commit)
+google-services.json
+*firebase-adminsdk*.json
