@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { getErrorMessage } from '@/api/errors';
-import { useScheduleMeeting, useTalkActionStatus } from '@/api/hooks/talk';
+import { useRetryTalkAction, useScheduleMeeting, useTalkActionStatus } from '@/api/hooks/talk';
 import type { LanguageStyle, TalkAction } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -72,7 +72,8 @@ export function TalkActionCard({ action, messageId, threadId, lang }: Props) {
     case 'email':
       return <EmailCard action={action} messageId={messageId} threadId={threadId} lang={lang} />;
     case 'meeting':
-      return <MeetingCard action={action} messageId={messageId} threadId={threadId} lang={lang} />;
+      // Keyed by status so a retried card (needs_connection → proposed) starts from the new slot.
+      return <MeetingCard key={`${action.id}:${action.status}`} action={action} messageId={messageId} threadId={threadId} lang={lang} />;
     default:
       return null;
   }
@@ -82,6 +83,7 @@ function MeetingCard({ action, messageId, threadId, lang }: Props & { action: Ex
   const theme = useTheme();
   const schedule = useScheduleMeeting(threadId);
   const status = useTalkActionStatus(threadId);
+  const retry = useRetryTalkAction(threadId);
   const now = useNow();
   const [title, setTitle] = useState(action.title);
   const [start, setStart] = useState<Date | null>(action.startAt ? new Date(action.startAt) : null);
@@ -114,6 +116,25 @@ function MeetingCard({ action, messageId, threadId, lang }: Props & { action: Ex
         {action.note ? <Text variant="caption" tone="secondary">{action.note}</Text> : null}
         <View style={styles.row}>
           <Button label={pick(lang, 'Open Profile', 'Profile kholo')} size="sm" variant="secondary" onPress={() => router.push('/profile')} />
+          {state === 'needs_connection' && messageId ? (
+            <Button
+              label={pick(lang, 'Try again', 'Phir se try karo')}
+              size="sm"
+              loading={retry.isPending}
+              onPress={() =>
+                retry.mutate(
+                  { messageId, actionId: action.id },
+                  {
+                    onSuccess: (m) => {
+                      const next = m.actions.find((a) => a.id === action.id);
+                      if (next?.status === 'needs_connection') toast(next.note ?? pick(lang, 'Calendar still not connected', 'Calendar abhi bhi connect nahi hai'));
+                    },
+                    onError: (e) => toast(getErrorMessage(e)),
+                  },
+                )
+              }
+            />
+          ) : null}
         </View>
       </Shell>
     );

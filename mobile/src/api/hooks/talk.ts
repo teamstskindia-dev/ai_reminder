@@ -5,6 +5,7 @@ import {
   deleteTalkThread,
   fetchTalkMessages,
   fetchTalkThreads,
+  retryTalkAction,
   scheduleMeeting,
   sendTalk,
   setTalkActionStatus,
@@ -70,6 +71,14 @@ export function useTalkActionStatus(threadId: string | null) {
   const replace = useReplaceMessage();
   return useMutation({
     mutationFn: (input: { messageId: string; actionId: string; status: 'sent' | 'cancelled' }) => setTalkActionStatus(input),
+    onSuccess: (message) => replace(threadId, message),
+  });
+}
+
+export function useRetryTalkAction(threadId: string | null) {
+  const replace = useReplaceMessage();
+  return useMutation({
+    mutationFn: (input: { messageId: string; actionId: string }) => retryTalkAction(input),
     onSuccess: (message) => replace(threadId, message),
   });
 }

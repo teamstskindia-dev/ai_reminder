@@ -639,6 +639,49 @@ export class TalkService {
     return { eventId: created.eventId, htmlLink: created.htmlLink, message };
   }
 
+  /**
+   * Re-proposes a meeting that waited for Google Calendar (the user connected or reconnected it after asking):
+   * the card turns into the invite preview without asking the friend again.
+   */
+  async retryAction(userId: string, messageId: string, actionId: string): Promise<TalkMessage> {
+    const user = await this.context.user(userId);
+    if (!user) throw AppException.notFound('User');
+    const row = await this.prisma.assistantMessage.findFirst({
+      where: { id: messageId, userId, role: 'assistant', thread: { kind: 'talk' } },
+      select: { actions: true },
+    });
+    if (!row) throw AppException.notFound('Message');
+    const actions = Array.isArray(row.actions) ? (row.actions as unknown as TalkAction[]) : [];
+    const action = actions.find((a) => a.id === actionId);
+    if (!action) throw AppException.notFound('Action');
+    if (action.type !== 'meeting' || action.status !== 'needs_connection') {
+      throw AppException.conflict('This action cannot be retried');
+    }
+    const guest = action.attendees[0];
+    const next = await this.proposeMeeting(
+      user,
+      {
+        type: 'schedule_meeting',
+        title: action.title,
+        withName: guest?.name ?? null,
+        email: guest?.email ?? null,
+        remindAt: null,
+        windowStart: null,
+        windowEnd: null,
+        durationMinutes: null,
+        to: null,
+        subject: null,
+        body: null,
+        details: null,
+        tool: null,
+        request: null,
+      },
+      safeTimeZone(user.timezone),
+      action.id,
+    );
+    return this.patchAction(userId, messageId, actionId, () => next);
+  }
+
   /** The user sent the drafted email from their mail app, or dropped a proposal. */
   async setActionStatus(
     userId: string,

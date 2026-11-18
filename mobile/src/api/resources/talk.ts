@@ -31,6 +31,11 @@ export function setTalkActionStatus(input: { messageId: string; actionId: string
   return api<TalkMessage>('/talk/actions/status', { method: 'POST', body: input });
 }
 
+/** Re-proposes a meeting that waited for Google Calendar, once the user (re)connected it. */
+export function retryTalkAction(input: { messageId: string; actionId: string }): Promise<TalkMessage> {
+  return api<TalkMessage>('/talk/actions/retry', { method: 'POST', body: input, timeoutMs: 30_000 });
+}
+
 export function fetchTalkThreads(page = 1): Promise<Paginated<TalkThread>> {
   return apiPage<TalkThread>('/talk/threads', { query: { page, limit: 30 } });
 }
