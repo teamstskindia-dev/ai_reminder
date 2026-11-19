@@ -17,6 +17,8 @@ export interface DaySummary {
   openItems: number;
   /** How many of the day's meetings overlap another one (double-booked). */
   overlaps?: number;
+  /** Urgent / needs-a-reply emails still open (user-flow §07). */
+  emails?: number;
 }
 
 export function greeting(lang: LanguageStyle, name: string | null, localHour: number): string {
@@ -27,9 +29,22 @@ export function greeting(lang: LanguageStyle, name: string | null, localHour: nu
 
 /** One line about the day: "3 meetings today (first at 10:00 AM), 2 reminders and 4 open to-dos." */
 export function dayHeadline(lang: LanguageStyle, d: DaySummary): string {
-  const line = dayLine(lang, d);
-  if (!d.overlaps) return line;
-  return `${line} ${pick(lang, `Heads up: ${d.overlaps} meetings overlap.`, `Dhyan do: ${d.overlaps} meetings ek saath hain.`)}`;
+  const parts = [dayLine(lang, d)];
+  if (d.overlaps) {
+    parts.push(
+      pick(lang, `Heads up: ${d.overlaps} meetings overlap.`, `Dhyan do: ${d.overlaps} meetings ek saath hain.`),
+    );
+  }
+  if (d.emails) {
+    parts.push(
+      pick(
+        lang,
+        `${plural(d.emails, 'email needs', 'emails need')} you.`,
+        `${d.emails} email${d.emails === 1 ? '' : 's'} tumhara wait kar rahe hain.`,
+      ),
+    );
+  }
+  return parts.join(' ');
 }
 
 function dayLine(lang: LanguageStyle, d: DaySummary): string {

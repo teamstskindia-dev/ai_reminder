@@ -28,6 +28,19 @@ export const RedisKeys = {
   aiQuota: (userId: string, day: string) => `quota:ai:${userId}:${day}`,
   /** Exactly-once marker for a daily-rhythm job (morning brief, check-in, ...) per user and local day. */
   rhythm: (kind: string, userId: string, day: string) => `rhythm:${kind}:${userId}:${day}`,
+  /** Connected-app OAuth attempt (single use): { userId, provider, redirect, verifier, mode }. */
+  connectState: (nonce: string) => `connect-state:${nonce}`,
+  /** Normal pushes sent on a local day (the daily push budget, user-flow §09). */
+  pushBudget: (userId: string, day: string) => `push-budget:${userId}:${day}`,
+  /** How many pushes were held back for one bundle push. */
+  pushHeld: (userId: string, releaseAtMs: number) => `push-held:${userId}:${releaseAtMs}`,
+  /** The same notification twice within a few minutes is merged into one. */
+  notifDedupe: (userId: string, hash: string) => `notif-dedupe:${userId}:${hash}`,
+  /** Important-email pushes in the current hour (inbox flood → batched). */
+  emailPushes: (userId: string, hourKey: string) => `email-pushes:${userId}:${hourKey}`,
+  emailHeld: (userId: string, hourKey: string) => `email-held:${userId}:${hourKey}`,
+  /** One "reconnect" push per account and day. */
+  reconnectNotice: (accountId: string, day: string) => `reconnect-notice:${accountId}:${day}`,
   publicConfig: (platform: string) => `cfg:public:${platform}`,
   sections: (page: string, platform: string) => `cfg:sections:${page}:${platform}`,
   page: (slug: string) => `cfg:page:${slug}`,

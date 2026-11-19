@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/errors/app.exception';
 import { Paginated } from '../../common/pagination/pagination';
 import type { Reminder, ReminderChannel } from '../../common/types/api.types';
+import { sameTitle } from '../../common/utils/similarity.util';
 import type { ReminderRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { CreateReminderDto, ListRemindersQueryDto, UpdateReminderDto } from './dto/reminders.dto';
@@ -10,6 +11,8 @@ import { ReminderWithMeeting, toReminder } from './reminders.mapper';
 import { RemindersRepository } from './reminders.repository';
 
 export const DEFAULT_REMINDER_CHANNELS: ReminderChannel[] = ['push', 'in_app'];
+/** Two reminders for the same thing this close together are one reminder. */
+const MERGE_WINDOW_MS = 60 * 60_000;
 
 @Injectable()
 export class RemindersService {
@@ -108,8 +111,24 @@ export class RemindersService {
     return toReminder(updated);
   }
 
-  /** Inserts a reminder row and schedules its delayed job (used by AI, scheduler and action items). */
+  /**
+   * Inserts a reminder row and schedules its delayed job (used by AI, scheduler and action items).
+   * The same reminder from two sources (a recording and a chat, an email and a manual one) is merged into
+   * one (user-flow §09): a pending reminder with the same meaning within an hour is returned instead.
+   */
   async createAndSchedule(data: Prisma.ReminderUncheckedCreateInput): Promise<ReminderWithMeeting> {
+    if (data.type !== 'meeting_upcoming' && data.source !== 'system') {
+      const at = new Date(data.remindAt);
+      const near = await this.reminders.pendingNear(data.userId, at, MERGE_WINDOW_MS);
+      const same = near.find(
+        (r) =>
+          // Two reminders the user typed in themselves are intentional; and never merge two different to-dos.
+          !(data.source === 'manual' && r.source === 'manual') &&
+          (!data.actionItemId || !r.actionItemId || r.actionItemId === data.actionItemId) &&
+          sameTitle(r.title, data.title),
+      );
+      if (same) return same;
+    }
     const inserted = await this.reminders.insert({ status: 'pending', ...data });
     await this.scheduler.schedule(inserted);
     return inserted;

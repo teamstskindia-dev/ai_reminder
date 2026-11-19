@@ -4,6 +4,7 @@ import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { ApiDateTime, ApiInteger, ApiUuid } from '../../common/swagger/api-docs.decorators';
 import type * as Contract from '../../common/types/api.types';
 import { ActionItem } from '../action-items/action-items.responses.dto';
+import { TodayEmails } from '../email/email.dto';
 import { MeetingListItem } from '../meetings/dto/meetings.responses.dto';
 import { Reminder } from '../reminders/dto/reminders.responses.dto';
 
@@ -110,6 +111,8 @@ export class TodayBrief implements Contract.TodayBrief {
   nudge: CompanionNudge | null;
   /** Ids of today's meetings that overlap another one (double-booked). */
   overlapIds: string[];
+  /** Emails that need the user and the FYI digest (user-flow §07). */
+  @ApiProperty({ type: TodayEmails }) emails: TodayEmails;
 }
 
 export class MoodPoint implements Contract.MoodPoint {

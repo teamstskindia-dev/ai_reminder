@@ -255,6 +255,20 @@ export interface UserSettings {
   morningBrief: boolean;
   /** Ask "how did today go?" at `checkinTime`. */
   eveningCheckin: boolean;
+  /** Push important emails (user-flow §07). */
+  emailAlerts: boolean;
+  /** Senders that always alert, even in quiet hours. */
+  vipSenders: string[];
+  /** Senders marked "not important": never alert. */
+  mutedSenders: string[];
+  /** Normal pushes per day before the rest are bundled into one (user-flow §09). */
+  pushBudget: number;
+  /** Critical alerts (timed reminders, meeting starting, urgent email) may break through quiet hours. */
+  criticalBreakThrough: boolean;
+  /** Focus mode until this time (null = off). */
+  focusUntil: ISODate | null;
+  /** "Take a break" from nudges until this time (null = off). */
+  nudgesPausedUntil: ISODate | null;
 }
 
 /** PATCH /me/settings body: settings fields plus write-only flags. */
@@ -547,7 +561,12 @@ export type NotificationType =
   | 'weekly_recap'
   | 'capture_ready'
   | 'meeting_start'
-  | 'meeting_notes';
+  | 'meeting_notes'
+  | 'email_important'
+  | 'email_bundle'
+  | 'task_created'
+  | 'reconnect_needed'
+  | 'push_bundle';
 
 export interface NotificationData {
   meetingId?: string;
@@ -555,6 +574,10 @@ export interface NotificationData {
   reminderId?: string;
   /** A recorded conversation (opens the review card). */
   captureId?: string;
+  /** An important email (opens its summary with Reply / Remind). */
+  emailId?: string;
+  /** Set on pushes: the in-app notification row (marked opened on tap). */
+  notificationId?: string;
   url?: string;
   [k: string]: unknown;
 }
@@ -680,8 +703,39 @@ export type TalkAction =
       eventId: string | null;
       note: string | null;
     }
-  | { id: string; type: 'email'; status: 'proposed' | 'sent' | 'cancelled'; to: string | null; subject: string; body: string; note: string | null }
-  | { id: string; type: 'task'; status: 'done' | 'failed'; title: string; tool: string; actionItemId: string | null; note: string | null }
+  | {
+      id: string;
+      type: 'email';
+      status: 'proposed' | 'sent' | 'cancelled' | 'failed';
+      to: string | null;
+      subject: string;
+      body: string;
+      note: string | null;
+      /** A reply to this email (threaded when sent from the connected account). */
+      replyToEmailId?: string | null;
+      /** The connected Gmail / Outlook can send it after approval. */
+      canSendFromAccount?: boolean;
+      sentFromAccount?: boolean;
+    }
+  | {
+      id: string;
+      type: 'task';
+      status: 'done' | 'failed' | 'proposed' | 'duplicate';
+      title: string;
+      /** Tool id (jira, notion, linear, todoist) or "app". */
+      tool: string;
+      actionItemId: string | null;
+      note: string | null;
+      details?: string | null;
+      toolTaskId?: string | null;
+      url?: string | null;
+      externalKey?: string | null;
+      duplicate?: ToolDuplicate | null;
+    }
+  | { id: string; type: 'email_summary'; status: 'info'; title: string; groups: { label: string; items: EmailItem[] }[]; note: string | null }
+  | { id: string; type: 'tool_list'; status: 'info'; tool: ToolProvider; title: string; items: ToolItem[]; note: string | null }
+  | { id: string; type: 'note'; status: 'proposed' | 'saved' | 'cancelled' | 'failed'; tool: 'notion'; title: string; body: string; url: string | null; note: string | null }
+  | { id: string; type: 'pause'; status: 'done'; until: ISODate; note: string | null }
   | { id: string; type: 'unavailable'; status: 'info'; feature: 'email_read' | 'tool'; note: string };
 
 export interface TalkMessage {
@@ -780,6 +834,8 @@ export interface TodayBrief {
   nudge: CompanionNudge | null;
   /** Ids of today's meetings that overlap another one (double-booked). */
   overlapIds: string[];
+  /** Emails that need the user and the FYI digest (user-flow §07). */
+  emails?: TodayEmails;
 }
 
 export interface MoodPoint {
@@ -873,12 +929,131 @@ export interface AnalyticsOverview {
 }
 
 // ---------- Integrations / devices ----------
+export type EmailProvider = 'gmail' | 'outlook';
+export type ToolProvider = 'notion' | 'jira' | 'linear' | 'todoist';
+export type ConnectedProvider = EmailProvider | ToolProvider;
+export type IntegrationProvider = 'google_calendar' | ConnectedProvider;
+
+export interface IntegrationSettings {
+  /** Email: replies the user approved can be sent from this account (read + send). */
+  canSend: boolean | null;
+  /** Tools: default Notion database / Jira project / Linear team / Todoist project. */
+  targetId: string | null;
+  targetName: string | null;
+  /** Tools: create tasks without asking first. */
+  autoSend: boolean;
+}
+
 export interface Integration {
-  provider: 'google_calendar';
+  provider: IntegrationProvider;
+  kind: 'calendar' | 'email' | 'tasks';
+  /** False when the server has no OAuth client for it ("coming soon"). */
+  available: boolean;
   connected: boolean;
+  status: 'connected' | 'needs_reconnect' | 'not_connected';
   accountEmail: string | null;
   lastSyncedAt: ISODate | null;
   syncError: string | null;
+  settings: IntegrationSettings | null;
+}
+
+export interface IntegrationTarget {
+  id: string;
+  name: string;
+}
+
+// ---------- Reading your email (user-flow §07) ----------
+export type EmailCategory = 'urgent' | 'needs_reply' | 'fyi' | 'promotion' | 'phishing' | 'sensitive';
+export type EmailStatus = 'new' | 'alerted' | 'held' | 'replied' | 'done' | 'dismissed';
+export type EmailFilter = 'important' | 'needs_reply' | 'fyi' | 'all';
+
+export interface EmailDetected {
+  id: string;
+  kind: 'deadline' | 'bill' | 'booking' | 'travel';
+  title: string;
+  dueAt: ISODate | null;
+  status: 'open' | 'added' | 'dismissed';
+  reminderId: string | null;
+}
+
+export interface EmailItem {
+  id: string;
+  provider: EmailProvider;
+  fromName: string | null;
+  fromEmail: string | null;
+  /** null for sensitive mail: codes, passwords and statements are never kept. */
+  subject: string | null;
+  summary: string | null;
+  why: string | null;
+  category: EmailCategory;
+  status: EmailStatus;
+  receivedAt: ISODate;
+  openDetected: number;
+  isVip: boolean;
+}
+
+export interface EmailDetail extends EmailItem {
+  detected: EmailDetected[];
+  reminderId: string | null;
+  canSend: boolean;
+  accountEmail: string | null;
+  webUrl: string | null;
+}
+
+export interface EmailReplyDraft {
+  to: string;
+  subject: string;
+  body: string;
+  canSend: boolean;
+}
+
+export interface TodayEmails {
+  connected: boolean;
+  needYou: EmailItem[];
+  needYouCount: number;
+  fyi: EmailItem[];
+  fyiCount: number;
+}
+
+// ---------- Notion, Jira and other tools (user-flow §08) ----------
+export type ToolTaskStatus = 'pending' | 'open' | 'done' | 'failed';
+export type ToolTaskSource = 'meeting' | 'email' | 'chat' | 'manual';
+
+export interface ToolTask {
+  id: string;
+  provider: ToolProvider;
+  title: string;
+  externalKey: string | null;
+  url: string | null;
+  status: ToolTaskStatus;
+  source: ToolTaskSource;
+  actionItemId: string | null;
+  ownerName: string | null;
+  dueAt: ISODate | null;
+  lastError: string | null;
+  createdAt: ISODate;
+}
+
+export interface ToolDuplicate {
+  externalId: string;
+  externalKey: string | null;
+  title: string;
+  url: string | null;
+}
+
+export interface ToolTaskResult {
+  outcome: 'created' | 'duplicate' | 'linked' | 'queued';
+  task: ToolTask | null;
+  duplicate: ToolDuplicate | null;
+}
+
+export interface ToolItem {
+  id: string;
+  key: string | null;
+  title: string;
+  status: string | null;
+  url: string | null;
+  dueAt: ISODate | null;
 }
 
 export interface Device {

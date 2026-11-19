@@ -208,6 +208,20 @@ export interface UserSettings {
   morningBrief: boolean;
   /** Ask "how did today go?" at `checkinTime`. */
   eveningCheckin: boolean;
+  /** Push important emails (user-flow §07). */
+  emailAlerts: boolean;
+  /** Senders (emails, lower case) that always alert, even in quiet hours. */
+  vipSenders: string[];
+  /** Senders the user marked "not important": never alert. */
+  mutedSenders: string[];
+  /** Normal pushes per local day before the rest are bundled into one (user-flow §09). */
+  pushBudget: number;
+  /** Critical alerts (timed reminders, meeting starting, urgent email) may break through quiet hours. */
+  criticalBreakThrough: boolean;
+  /** Focus mode: no pushes (critical ones wait too unless they may break through) until this time. */
+  focusUntil: ISODate | null;
+  /** "Take a break": no friend nudges (morning brief, check-in, nudges, follow-ups) until this time. */
+  nudgesPausedUntil: ISODate | null;
 }
 
 // ---------- Companion profile and onboarding ----------
@@ -405,7 +419,15 @@ export type NotificationType =
   | 'weekly_recap'
   | 'capture_ready'
   | 'meeting_start'
-  | 'meeting_notes';
+  | 'meeting_notes'
+  | 'email_important'
+  | 'email_bundle'
+  | 'task_created'
+  | 'reconnect_needed'
+  | 'push_bundle';
+
+/** How notifications decide (user-flow §09). */
+export type NotificationPriority = 'critical' | 'normal' | 'low';
 
 // ---------- Tap to record a conversation (captures) ----------
 /** A capture is a meeting with source `capture`: uploading → processing → completed | failed. */
@@ -552,21 +574,61 @@ export type TalkAction =
   | {
       id: string;
       type: 'email';
-      status: 'proposed' | 'sent' | 'cancelled';
+      /** sent: from the user's mail app, or from their connected account when `sentFromAccount`. */
+      status: 'proposed' | 'sent' | 'cancelled' | 'failed';
       to: string | null;
       subject: string;
       body: string;
       note: string | null;
+      /** A reply to this email (threaded when sent from the connected account). */
+      replyToEmailId?: string | null;
+      /** The connected Gmail / Outlook can send it after approval. */
+      canSendFromAccount?: boolean;
+      sentFromAccount?: boolean;
     }
   | {
       id: string;
       type: 'task';
-      status: 'done' | 'failed';
+      /** done: added to the to-dos (or created in the tool); proposed: waits for Send; duplicate: merge or new. */
+      status: 'done' | 'failed' | 'proposed' | 'duplicate';
       title: string;
       tool: string;
       actionItemId: string | null;
       note: string | null;
+      details?: string | null;
+      toolTaskId?: string | null;
+      url?: string | null;
+      externalKey?: string | null;
+      duplicate?: ToolDuplicate | null;
     }
+  | {
+      id: string;
+      type: 'email_summary';
+      status: 'info';
+      title: string;
+      groups: { label: string; items: EmailItem[] }[];
+      note: string | null;
+    }
+  | {
+      id: string;
+      type: 'tool_list';
+      status: 'info';
+      tool: ToolProvider;
+      title: string;
+      items: ToolItem[];
+      note: string | null;
+    }
+  | {
+      id: string;
+      type: 'note';
+      status: 'proposed' | 'saved' | 'cancelled' | 'failed';
+      tool: 'notion';
+      title: string;
+      body: string;
+      url: string | null;
+      note: string | null;
+    }
+  | { id: string; type: 'pause'; status: 'done'; until: ISODate; note: string | null }
   | { id: string; type: 'unavailable'; status: 'info'; feature: 'email_read' | 'tool'; note: string };
 
 export interface TalkMessage {
@@ -656,6 +718,8 @@ export interface TodayBrief {
   nudge: CompanionNudge | null;
   /** Ids of today's meetings that overlap another one (double-booked). */
   overlapIds: string[];
+  /** Emails that need the user and the FYI digest (user-flow §07). */
+  emails: TodayEmails;
 }
 
 export interface MoodPoint {
@@ -747,12 +811,144 @@ export interface AnalyticsOverview {
 }
 
 // ---------- Integrations / devices ----------
+export type EmailProvider = 'gmail' | 'outlook';
+export type ToolProvider = 'notion' | 'jira' | 'linear' | 'todoist';
+export type ConnectedProvider = EmailProvider | ToolProvider;
+export type IntegrationProvider = 'google_calendar' | ConnectedProvider;
+
+export interface IntegrationSettings {
+  /** Email: the account may send replies the user approved (read + send), else read only. */
+  canSend: boolean | null;
+  /** Tools: default Notion database / Jira project / Linear team / Todoist project for new tasks. */
+  targetId: string | null;
+  targetName: string | null;
+  /** Tools: create tasks without asking first. */
+  autoSend: boolean;
+}
+
 export interface Integration {
-  provider: 'google_calendar';
+  provider: IntegrationProvider;
+  kind: 'calendar' | 'email' | 'tasks';
+  /** False when the server has no OAuth client for it (shown as "coming soon"). */
+  available: boolean;
   connected: boolean;
+  status: 'connected' | 'needs_reconnect' | 'not_connected';
+  /** Account email, or the workspace / site name for tools. */
   accountEmail: string | null;
   lastSyncedAt: ISODate | null;
   syncError: string | null;
+  settings: IntegrationSettings | null;
+}
+
+export interface IntegrationTarget {
+  id: string;
+  name: string;
+}
+
+// ---------- Reading your email (user-flow §07) ----------
+export type EmailCategory = 'urgent' | 'needs_reply' | 'fyi' | 'promotion' | 'phishing' | 'sensitive';
+export type EmailStatus = 'new' | 'alerted' | 'held' | 'replied' | 'done' | 'dismissed';
+
+export interface EmailDetected {
+  id: string;
+  kind: 'deadline' | 'bill' | 'booking' | 'travel';
+  title: string;
+  dueAt: ISODate | null;
+  status: 'open' | 'added' | 'dismissed';
+  reminderId: string | null;
+}
+
+export interface EmailItem {
+  id: string;
+  provider: EmailProvider;
+  fromName: string | null;
+  fromEmail: string | null;
+  /** null for sensitive mail (codes, passwords, statements are never kept). */
+  subject: string | null;
+  /** One line: what it says or asks. */
+  summary: string | null;
+  /** Why it matters ("your manager needs it by 5 pm"). */
+  why: string | null;
+  category: EmailCategory;
+  status: EmailStatus;
+  receivedAt: ISODate;
+  /** Deadlines, bills, bookings and travel still to confirm. */
+  openDetected: number;
+  isVip: boolean;
+}
+
+export interface EmailDetail extends EmailItem {
+  detected: EmailDetected[];
+  reminderId: string | null;
+  /** The connected account can send the reply (read + send). */
+  canSend: boolean;
+  accountEmail: string | null;
+  /** Opens the email in Gmail / Outlook on the web. */
+  webUrl: string | null;
+}
+
+export interface EmailReplyDraft {
+  to: string;
+  subject: string;
+  body: string;
+  canSend: boolean;
+}
+
+export interface TodayEmails {
+  connected: boolean;
+  /** Urgent and needs-a-reply emails still open (last 3 days), newest first. */
+  needYou: EmailItem[];
+  needYouCount: number;
+  /** FYI and newsletters bundled into the brief (last 24 hours). */
+  fyi: EmailItem[];
+  fyiCount: number;
+}
+
+// ---------- Notion, Jira and other tools (user-flow §08) ----------
+export type ToolTaskStatus = 'pending' | 'open' | 'done' | 'failed';
+export type ToolTaskSource = 'meeting' | 'email' | 'chat' | 'manual';
+
+export interface ToolTask {
+  id: string;
+  provider: ToolProvider;
+  title: string;
+  /** JIRA-123, ENG-42 … when the tool has keys. */
+  externalKey: string | null;
+  url: string | null;
+  status: ToolTaskStatus;
+  source: ToolTaskSource;
+  actionItemId: string | null;
+  ownerName: string | null;
+  dueAt: ISODate | null;
+  lastError: string | null;
+  createdAt: ISODate;
+}
+
+export interface ToolDuplicate {
+  externalId: string;
+  externalKey: string | null;
+  title: string;
+  url: string | null;
+}
+
+export interface ToolTaskResult {
+  /**
+   * created; duplicate (nothing created yet: merge or create new); linked (merged into the existing task);
+   * queued (the tool is down or needs a reconnect: kept in the app and retried).
+   */
+  outcome: 'created' | 'duplicate' | 'linked' | 'queued';
+  task: ToolTask | null;
+  duplicate: ToolDuplicate | null;
+}
+
+/** An open item fetched from a tool ("what is pending on my Jira?"). */
+export interface ToolItem {
+  id: string;
+  key: string | null;
+  title: string;
+  status: string | null;
+  url: string | null;
+  dueAt: ISODate | null;
 }
 
 export interface Device {
@@ -803,6 +999,7 @@ export const QUEUE_NAMES = [
   'notifications',
   'digest',
   'companion',
+  'integrations',
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 

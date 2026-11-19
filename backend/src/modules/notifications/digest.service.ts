@@ -48,7 +48,7 @@ export class DigestService {
   private async sendDigest(userId: string, tz: string, now: Date): Promise<boolean> {
     const dayStart = startOfLocalDay(now, tz);
     const dayEnd = startOfLocalDay(now, tz, 1);
-    const [meetings, openCount, items, reminders] = await Promise.all([
+    const [meetings, openCount, items, reminders, emails] = await Promise.all([
       this.prisma.meeting.findMany({
         where: { userId, startAt: { gte: dayStart, lt: dayEnd }, status: { notIn: ['cancelled'] } },
         orderBy: { startAt: 'asc' },
@@ -63,10 +63,30 @@ export class DigestService {
         take: 5,
       }),
       this.prisma.reminder.count({ where: { userId, status: 'pending', remindAt: { gte: dayStart, lt: dayEnd } } }),
+      // Emails that need the user (user-flow §07): for people with push off, the digest is how they hear.
+      this.prisma.emailMessage.findMany({
+        where: {
+          userId,
+          category: { in: ['urgent', 'needs_reply'] },
+          status: { in: ['new', 'alerted', 'held'] },
+          receivedAt: { gte: new Date(now.getTime() - 2 * 86_400_000) },
+        },
+        orderBy: { receivedAt: 'desc' },
+        select: { fromName: true, fromEmail: true, summary: true, category: true },
+        take: 5,
+      }),
     ]);
-    if (!meetings.length && !openCount && !reminders) return false;
+    if (!meetings.length && !openCount && !reminders && !emails.length) return false;
 
     const lines: string[] = [];
+    if (emails.length) {
+      lines.push('**Emails that need you**');
+      for (const e of emails) {
+        const who = escapeMarkdown(e.fromName ?? e.fromEmail ?? 'Someone');
+        lines.push(`- ${e.category === 'urgent' ? '❗ ' : ''}${who}: ${escapeMarkdown(e.summary ?? 'New email')}`);
+      }
+      lines.push('');
+    }
     if (meetings.length) {
       lines.push('**Meetings today**');
       for (const m of meetings) lines.push(`- ${formatTime(m.startAt, tz)} · ${escapeMarkdown(m.title)}`);

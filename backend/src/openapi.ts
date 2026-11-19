@@ -33,7 +33,18 @@ const TAGS: [string, string][] = [
   ['auth', 'Google sign-in (PKCE for mobile), Sign in with Apple, email sign-in codes, token refresh and logout.'],
   ['me', 'The signed-in user profile, settings, personality profile and account deletion.'],
   ['onboarding', 'First-run get-to-know-you chat, voice answers, the first personality profile and finishing setup.'],
-  ['integrations', 'Google Calendar connection and sync.'],
+  [
+    'integrations',
+    'Connected apps: Google Calendar, Gmail, Outlook, Notion, Jira, Linear and Todoist (OAuth connect, defaults, disconnect).',
+  ],
+  [
+    'emails',
+    'Reading your email: what needs you, one-line summaries, reminders and calendar events from emails, reply drafts sent only after approval.',
+  ],
+  [
+    'tools',
+    'Notion, Jira, Linear and Todoist: send to-dos as tasks (duplicate check, retries), default projects and what is open.',
+  ],
   ['dashboard', 'Home screen aggregate.'],
   [
     'companion',

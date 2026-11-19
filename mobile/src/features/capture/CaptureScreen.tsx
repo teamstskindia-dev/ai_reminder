@@ -49,6 +49,7 @@ import { MAX_CONTENT_WIDTH } from '@/theme/tokens';
 import { formatDayLabel, formatDuration, formatTime, formatTimestamp as formatClock } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { toast } from '@/utils/toast';
+import { SendAllToTool } from '@/features/tools/SendAllToTool';
 
 import { EventLink, FollowUpCard } from './CaptureMeetingLink';
 
@@ -433,6 +434,8 @@ export function CaptureScreen({ id }: { id: string }) {
                   <EmptyState compact icon={ListChecks} title={pick(lang, 'No to-dos found', 'Koi to-do nahi mila')} />
                 </Card>
               )}
+              {/* Team tasks too: the owner is assigned in the tool when the name is unambiguous. */}
+              <SendAllToTool items={capture.actionItems} lang={lang} />
             </View>
 
             <View style={styles.section}>

@@ -26,9 +26,10 @@ import { safeUrl } from '@/utils/safeUrl';
 import { toast } from '@/utils/toast';
 
 import { AboutYou, DailyRhythmSettings } from './AboutYou';
-import { CalendarIntegration } from './CalendarIntegration';
+import { ConnectedAppsRow } from './ConnectedAppsRow';
 import { NotetakerSettings } from './NotetakerSettings';
 import { NotificationSettings } from './NotificationSettings';
+import { NotifyRulesSettings } from './NotifyRulesSettings';
 
 const DEFAULT_PAGES = [
   { slug: 'about', label: 'About' },
@@ -56,7 +57,7 @@ function pageIcon(slug: string): LucideIcon {
 
 export function ProfileScreen() {
   const theme = useTheme();
-  const { config, isEnabled } = useConfig();
+  const { config } = useConfig();
   const title = useTabLabel('profile', 'Profile');
   const { signOut } = useAuth();
   const me = useMeQuery();
@@ -142,7 +143,8 @@ export function ProfileScreen() {
             <DailyRhythmSettings settings={settings} onChange={onChange} />
             <NotetakerSettings settings={settings} onChange={onChange} />
             <NotificationSettings settings={settings} onChange={onChange} />
-            {isEnabled('calendarSync') ? <CalendarIntegration /> : null}
+            <NotifyRulesSettings settings={settings} onChange={onChange} />
+            <ConnectedAppsRow />
 
             <ListGroup title="About">
               {legalPages(config.navigation.footer).map((page) => (

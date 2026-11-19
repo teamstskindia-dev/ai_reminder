@@ -14,6 +14,7 @@ export class RepeatableJobsService implements OnApplicationBootstrap {
     @InjectQueue(QUEUE.CALENDAR_SYNC) private readonly syncQueue: Queue,
     @InjectQueue(QUEUE.DIGEST) private readonly digestQueue: Queue,
     @InjectQueue(QUEUE.COMPANION) private readonly companionQueue: Queue,
+    @InjectQueue(QUEUE.INTEGRATIONS) private readonly integrationsQueue: Queue,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -30,6 +31,17 @@ export class RepeatableJobsService implements OnApplicationBootstrap {
         'rhythm-5min',
         { pattern: '*/5 * * * *' },
         { name: JOB.RHYTHM_TICK, data: {} },
+      );
+      // Connected apps: new emails every few minutes, task status in the tools every 15 minutes.
+      await this.integrationsQueue.upsertJobScheduler(
+        'email-poll',
+        { every: this.config.integrations.emailPollIntervalMinutes * 60_000 },
+        { name: JOB.EMAIL_POLL, data: {} },
+      );
+      await this.integrationsQueue.upsertJobScheduler(
+        'tools-watch-15min',
+        { pattern: '*/15 * * * *' },
+        { name: JOB.TOOLS_WATCH, data: {} },
       );
       this.logger.log({ syncEveryMinutes: this.config.calendarSyncIntervalMinutes }, 'repeatable jobs registered');
     } catch (err) {

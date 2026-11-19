@@ -36,12 +36,17 @@ import { CompanionController } from './modules/companion/companion.controller';
 import { CapturesModule } from './modules/captures/captures.module';
 import { TalkModule } from './modules/talk/talk.module';
 import { CompanionModule } from './modules/companion/companion.module';
+import { ConnectionsModule } from './modules/connections/connections.module';
+import { EmailController } from './modules/email/email.controller';
+import { EmailModule } from './modules/email/email.module';
+import { ToolsController } from './modules/tools/tools.controller';
+import { ToolsModule } from './modules/tools/tools.module';
 import { TodayService } from './modules/companion/today.service';
 import { ContentModule } from './modules/content/content.module';
 import { DashboardController, DashboardService } from './modules/dashboard/dashboard.controller';
 import { DevicesController } from './modules/devices/devices.controller';
 import { HealthController } from './modules/health/health.controller';
-import { IntegrationsController } from './modules/integrations/integrations.controller';
+import { IntegrationsCallbackController, IntegrationsController } from './modules/integrations/integrations.controller';
 import { MeetingsController } from './modules/meetings/meetings.controller';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { NotificationsController } from './modules/notifications/notifications.controller';
@@ -98,6 +103,9 @@ class StorageBootstrap implements OnApplicationBootstrap {
     CompanionModule,
     CapturesModule,
     TalkModule,
+    ConnectionsModule,
+    EmailModule,
+    ToolsModule,
   ],
   controllers: [
     HealthController,
@@ -107,6 +115,9 @@ class StorageBootstrap implements OnApplicationBootstrap {
     ProfileController,
     OnboardingController,
     IntegrationsController,
+    IntegrationsCallbackController,
+    EmailController,
+    ToolsController,
     DashboardController,
     CompanionController,
     AnalyticsController,

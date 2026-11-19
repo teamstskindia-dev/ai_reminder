@@ -15,6 +15,7 @@ import { endOf, nextBackToBack, overlaps } from '../meetings/overlap.util';
 import { normalizeChannels, toReminder } from '../reminders/reminders.mapper';
 import { RemindersRepository } from '../reminders/reminders.repository';
 import { DeliveryService } from './delivery.service';
+import { nudgesPaused } from './notification-policy';
 
 export type ReminderOutcome = 'sent' | 'skipped';
 
@@ -181,11 +182,13 @@ export class ReminderDispatchService {
       where: { id: reminder.userId },
       select: {
         timezone: true,
-        settings: { select: { quietHoursStart: true, quietHoursEnd: true } },
+        settings: { select: { quietHoursStart: true, quietHoursEnd: true, nudgesPausedUntil: true } },
         profile: { select: { languageStyle: true } },
       },
     });
     if (!user?.settings) return 'skipped';
+    // "Take a break": no nagging follow-ups (the reminder itself already went out).
+    if (nudgesPaused(user.settings)) return 'skipped';
     if (
       inQuietHours(localMinutes(new Date(), user.timezone), user.settings.quietHoursStart, user.settings.quietHoursEnd)
     ) {

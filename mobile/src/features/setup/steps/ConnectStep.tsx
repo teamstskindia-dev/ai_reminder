@@ -7,17 +7,22 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Text } from '@/components/ui/Text';
 import { useGoogleReconnect } from '@/features/auth/useGoogleReconnect';
+import { useConnectApp } from '@/features/integrations/connect';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { StepLayout, type StepProps } from '../shared';
 
-/** D1 — signed in with Google: offer Calendar now or later (Gmail arrives in MVP+). */
+/** D1 — signed in with Google: offer Calendar and Gmail now or later (Gmail when the server offers it). */
 export function ConnectStep({ onNext }: StepProps) {
   const theme = useTheme();
   const integrations = useIntegrations();
   const { reconnect, pending } = useGoogleReconnect();
   const calendar = integrations.data?.find((i) => i.provider === 'google_calendar');
   const connected = Boolean(calendar?.connected);
+  const gmail = integrations.data?.find((i) => i.provider === 'gmail');
+  const gmailAvailable = Boolean(gmail?.available);
+  const gmailConnected = Boolean(gmail?.connected);
+  const { connect: connectApp, pending: connectingGmail } = useConnectApp();
 
   return (
     <StepLayout
@@ -49,18 +54,29 @@ export function ConnectStep({ onNext }: StepProps) {
           )}
         </View>
       </Card>
-      <Card muted>
+      <Card muted={!gmailAvailable}>
         <View style={styles.row}>
-          <View style={[styles.icon, { backgroundColor: theme.colors.surfaceMuted }]}>
-            <Mail size={20} color={theme.colors.textMuted} />
+          <View
+            style={[
+              styles.icon,
+              { backgroundColor: gmailConnected ? theme.colors.successSoft : gmailAvailable ? theme.colors.primarySoft : theme.colors.surfaceMuted },
+            ]}
+          >
+            <Mail size={20} color={gmailConnected ? theme.colors.success : gmailAvailable ? theme.colors.primaryText : theme.colors.textMuted} />
           </View>
           <View style={styles.flex}>
             <Text variant="subheading">Gmail</Text>
-            <Text variant="caption" tone="secondary">
-              Important emails and reply drafts
+            <Text variant="caption" tone="secondary" numberOfLines={2}>
+              {gmailConnected ? (gmail?.accountEmail ?? 'Connected') : 'Alerts for what matters, reply drafts you approve'}
             </Text>
           </View>
-          <Chip label="Coming soon" tone="neutral" />
+          {!gmailAvailable ? (
+            <Chip label="Coming soon" tone="neutral" />
+          ) : gmailConnected ? (
+            <Chip label="Connected" tone="success" />
+          ) : (
+            <Button label="Connect" size="sm" loading={connectingGmail === 'gmail'} onPress={() => void connectApp('gmail', 'send')} />
+          )}
         </View>
       </Card>
     </StepLayout>

@@ -2,7 +2,20 @@ import { Logger } from '@nestjs/common';
 import { AppException, UpstreamError } from '../../common/errors/app.exception';
 
 export type Provider =
-  'google' | 'apple' | 'gemini' | 'cloudinary' | 'expo' | 'smtp' | 'storage' | 'webhook' | 'recall';
+  | 'google'
+  | 'apple'
+  | 'gemini'
+  | 'cloudinary'
+  | 'expo'
+  | 'smtp'
+  | 'storage'
+  | 'webhook'
+  | 'recall'
+  | 'microsoft'
+  | 'notion'
+  | 'atlassian'
+  | 'linear'
+  | 'todoist';
 
 export interface ExternalCallOptions {
   provider: Provider;

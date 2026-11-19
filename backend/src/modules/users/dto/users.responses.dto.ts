@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { ApiDateTime, ApiInteger, ApiUuid } from '../../../common/swagger/api-docs.decorators';
 import type * as Contract from '../../../common/types/api.types';
 import { PlanRef } from '../../content/content.responses.dto';
@@ -44,6 +45,20 @@ export class UserSettings implements Contract.UserSettings {
   morningBrief: boolean;
   /** Ask "how did today go?" at `checkinTime`. */
   eveningCheckin: boolean;
+  /** Push important emails. */
+  emailAlerts: boolean;
+  /** Senders that always alert, even in quiet hours (lower-case emails). */
+  vipSenders: string[];
+  /** Senders marked "not important": never alert. */
+  mutedSenders: string[];
+  /** Normal pushes per local day before the rest are bundled into one. */
+  @ApiInteger({ minimum: 1, maximum: 50 }) pushBudget: number;
+  /** Critical alerts (timed reminders, meeting starting, urgent email) may break through quiet hours. */
+  criticalBreakThrough: boolean;
+  /** Focus mode until this time (`null` = off). */
+  @ApiDateTime() focusUntil: string | null;
+  /** "Take a break" from the friend's nudges until this time (`null` = off). */
+  @ApiDateTime() nudgesPausedUntil: string | null;
 }
 
 export class AuthTokens implements Contract.AuthTokens {
@@ -71,11 +86,39 @@ export class MeResult {
   settings: UserSettings;
 }
 
+export class IntegrationSettings implements Contract.IntegrationSettings {
+  /** Email: replies the user approved can be sent from this account (read + send). */
+  canSend: boolean | null;
+  /** Tools: default Notion database / Jira project / Linear team / Todoist project. */
+  targetId: string | null;
+  targetName: string | null;
+  /** Tools: create tasks without asking first. */
+  autoSend: boolean;
+}
+
 export class Integration implements Contract.Integration {
-  provider: 'google_calendar';
+  @ApiProperty({ enum: ['google_calendar', 'gmail', 'outlook', 'notion', 'jira', 'linear', 'todoist'] })
+  provider: Contract.IntegrationProvider;
+  @ApiProperty({ enum: ['calendar', 'email', 'tasks'] }) kind: 'calendar' | 'email' | 'tasks';
+  /** False when the server has no OAuth client for this provider (show it as "coming soon"). */
+  available: boolean;
   connected: boolean;
+  @ApiProperty({ enum: ['connected', 'needs_reconnect', 'not_connected'] })
+  status: 'connected' | 'needs_reconnect' | 'not_connected';
+  /** Account email, or the workspace / site name for tools. */
   accountEmail: string | null;
   @ApiDateTime() lastSyncedAt: string | null;
   /** Last sync error shown to the user; `null` when the last sync worked. */
   syncError: string | null;
+  @ApiProperty({ type: IntegrationSettings, nullable: true }) settings: IntegrationSettings | null;
+}
+
+export class IntegrationTarget implements Contract.IntegrationTarget {
+  id: string;
+  name: string;
+}
+
+export class ConnectUrl {
+  /** Open in an auth session (ASWebAuthenticationSession / Custom Tabs); the provider redirects back to the app. */
+  url: string;
 }

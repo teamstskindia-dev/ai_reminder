@@ -128,6 +128,75 @@ export class TalkActionStatusDto {
   status: 'sent' | 'cancelled';
 }
 
+/** The user approved an email draft to send from their connected Gmail / Outlook. */
+export class TalkSendEmailDto {
+  @ApiProperty({ required: false, format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  messageId?: string;
+
+  @ApiProperty({ required: false, format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  actionId?: string;
+
+  @ApiProperty({ maxLength: 320 })
+  @IsEmail()
+  @MaxLength(320)
+  to: string;
+
+  @ApiProperty({ maxLength: 300 })
+  @IsString()
+  @Length(1, 300)
+  subject: string;
+
+  @ApiProperty({ maxLength: 10000 })
+  @IsString()
+  @Length(1, 10000)
+  body: string;
+
+  /** Reply in this email's thread. */
+  @ApiProperty({ required: false, format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  replyToEmailId?: string | null;
+}
+
+export class TalkTaskDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  messageId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  actionId: string;
+
+  /** send: create it; merge: link to the similar existing task; new: create anyway. */
+  @ApiProperty({ enum: ['send', 'merge', 'new'] })
+  @IsIn(['send', 'merge', 'new'])
+  mode: 'send' | 'merge' | 'new';
+}
+
+export class TalkNoteDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  messageId: string;
+
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  actionId: string;
+
+  @ApiProperty({ maxLength: 300 })
+  @IsString()
+  @Length(1, 300)
+  title: string;
+
+  @ApiProperty({ maxLength: 20000 })
+  @IsString()
+  @Length(1, 20000)
+  body: string;
+}
+
 // ---------- responses ----------
 export class TalkMessage implements Contract.TalkMessage {
   @ApiUuid() id: string;
@@ -136,7 +205,10 @@ export class TalkMessage implements Contract.TalkMessage {
   @ApiProperty({ type: [AssistantSource] }) sources: AssistantSource[];
   /**
    * Action cards: \`reminder\` (set), \`meeting\` (proposal → approve with POST /talk/schedule), \`email\`
-   * (draft → the app opens the user's mail app), \`task\` (added), \`unavailable\` (an app that is not connected).
+   * (draft → POST /talk/actions/email from the connected account, or the user's mail app), \`task\` (added, or
+   * a proposal / duplicate for a tool → POST /talk/actions/task), \`email_summary\` (inbox summary or search),
+   * \`tool_list\` (open items in a tool), \`note\` (Notion note → POST /talk/actions/note), \`pause\` (a break from
+   * nudges), \`unavailable\` (an app that is not connected).
    */
   @ApiProperty({ type: 'array', items: { type: 'object', additionalProperties: true } })
   actions: Contract.TalkAction[];
@@ -158,6 +230,11 @@ export class TalkThread {
   title: string;
   @ApiDateTime() createdAt: string;
   @ApiDateTime() updatedAt: string;
+}
+
+export class TalkEmailSent {
+  /** The chat message with the card marked sent (null when sent without a card). */
+  @ApiProperty({ type: TalkMessage, nullable: true }) message: TalkMessage | null;
 }
 
 export class TalkScheduled {

@@ -161,6 +161,27 @@ export const envSchema = z
         .optional(),
     ),
     CALENDAR_SYNC_INTERVAL_MINUTES: int(10, 1, 1440),
+
+    /**
+     * Connected apps (user-flow §07 email, §08 tools). Each provider is offered in the app only when its OAuth
+     * client is configured. Every provider redirects to INTEGRATIONS_REDIRECT_URI (default:
+     * API_PUBLIC_URL + /api/v1/integrations/oauth/callback), which must be registered with that provider.
+     * Gmail reuses GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.
+     */
+    INTEGRATIONS_REDIRECT_URI: optionalString.pipe(z.url().optional()),
+    GMAIL_ENABLED: bool(true),
+    MICROSOFT_CLIENT_ID: optionalString,
+    MICROSOFT_CLIENT_SECRET: optionalString,
+    MICROSOFT_TENANT: z.string().default('common'),
+    NOTION_CLIENT_ID: optionalString,
+    NOTION_CLIENT_SECRET: optionalString,
+    ATLASSIAN_CLIENT_ID: optionalString,
+    ATLASSIAN_CLIENT_SECRET: optionalString,
+    LINEAR_CLIENT_ID: optionalString,
+    LINEAR_CLIENT_SECRET: optionalString,
+    TODOIST_CLIENT_ID: optionalString,
+    TODOIST_CLIENT_SECRET: optionalString,
+    EMAIL_POLL_INTERVAL_MINUTES: int(5, 1, 60),
   })
   .superRefine((env, ctx) => {
     if (!env.AI_MOCK && !env.GEMINI_API_KEY) {

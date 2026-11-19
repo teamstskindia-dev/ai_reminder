@@ -167,6 +167,53 @@ The `ask` tab is now **Talk** (`src/features/talk/`, API `/talk/*`).
 - Today marks double-booked meetings (**Overlaps**). In-person events (no video link) now sync too.
 - Scheduling needs the calendar connected with write access: existing users reconnect once in Profile.
 
+## Connected apps (user-flow §07, §08)
+
+Profile → **Connected apps** (`/connected-apps`, `src/features/integrations/`): Google Calendar, Gmail, Outlook,
+Notion, Jira, Linear and Todoist. Providers the server has no OAuth client for show "Coming soon".
+
+- **Connect**: `GET /integrations/:provider/connect?redirectUri=remi://integrations/callback` returns a consent URL
+  that opens in an auth session (`expo-web-browser`). The **API** finishes the OAuth exchange and redirects back with
+  `?provider=…&status=connected` (or `&error=`); no token or secret ever reaches the phone. On Android the redirect
+  may arrive through the router instead (`/integrations/callback`, filtered in `+native-intent.tsx`).
+- Email asks **Read and send replies I approve** or **Read only**. Tools have a **default project** (Notion database,
+  Jira project, Linear team, Todoist project) and **Send without asking** (off by default).
+- Expired or revoked access shows **Reconnect** (and one `reconnect_needed` push a day).
+
+## Reading your email (user-flow §07)
+
+- **Today** shows **Emails that need you** (urgent + needs a reply) and a collapsible **digest** of FYI mail; without a
+  connected inbox, a one-line invite to connect it. `/emails` lists Important / Reply / FYI / All (pull to refresh,
+  ↻ checks the inbox now).
+- **Email** (`/email/[id]`): the one-line summary and why it matters (never the body: it is not stored), a phishing
+  warning, "codes, passwords and statements are never kept", **Spotted in this email** (deadline / bill / booking /
+  travel → Remind me, Add to calendar, Dismiss), **Reply** (draft in your style → edit → **Send** from your account, or
+  **Open in email app** when read-only), **Remind me later**, **Create a task**, and **Always alert me / Not important**
+  (VIP and muted senders; also editable in Profile).
+- The `email_important` push opens the email; an inbox flood becomes one push.
+- In **Talk**: "summarize my mails today", "anything from HDFC this week?", "reply to Neha: yes, Thursday works"
+  (draft → **Send**, threaded).
+
+## Notion, Jira and other tools (user-flow §08)
+
+- Long-press any to-do → **Send to Jira** (or pick a tool); a recorded meeting's review card has **Send to-dos to …**
+  (team tasks too: the owner is assigned when the name is unambiguous).
+- A similar open task in the tool asks **Merge** / **Create new**; a tool that is down keeps the to-do and retries.
+- In **Talk**: "create a Jira ticket for the login bug" (preview → **Send**, or straight away with auto-send),
+  "what is pending on my Jira?", "prep me for sprint review", "save this summary to Notion" (preview → **Save**).
+- Done in the tool means done here (checked every 15 minutes); a changed due date moves the reminder.
+
+## How notifications decide (user-flow §09)
+
+Profile → **How I notify you**: important email alerts, **Always alert me** / **Not important** senders, the
+**daily push limit** (more are bundled into one push), **critical alerts in quiet hours**, **focus mode** (1 h, 2 h,
+4 h, until tomorrow morning) and **take a break** (1 day, 3 days, 1 week: no brief, check-ins or nudges; reminders
+still come). Tapping a push calls `POST /notifications/:id/opened`, so proactive nudges move to the hours you answer.
+In Talk, "I need a break for 3 days" does the same.
+
+All of this is JavaScript only (`expo-web-browser` and `expo-linking` were already in the app): no rebuild of the
+development build is needed.
+
 ## Builds (EAS)
 
 The repo uses Continuous Native Generation — no committed `ios/` or `android/` folders. Native configuration lives in

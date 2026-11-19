@@ -1,9 +1,25 @@
 import { Injectable } from '@nestjs/common';
+import { AppException } from '../../common/errors/app.exception';
 import type { User, UserSettings } from '../../common/types/api.types';
 import { Prisma } from '../../infra/prisma/models';
 import { UpdateMeDto, UpdateUserSettingsDto } from './dto/users.dto';
 import { toUser, toUserSettings } from './users.mapper';
 import { UsersRepository } from './users.repository';
+
+export function normalizeSenders(list: string[]): string[] {
+  return [...new Set(list.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** null turns the mode off; otherwise a future time at most `maxHours` ahead. */
+function futureWithin(value: string | null, maxHours: number, field: string): Date | null {
+  if (value === null) return null;
+  const at = new Date(value);
+  const now = Date.now();
+  if (Number.isNaN(at.getTime()) || at.getTime() <= now || at.getTime() > now + maxHours * 3600_000 + 60_000) {
+    throw AppException.validation([{ field, messages: [`${field} must be in the next ${maxHours} hours`] }]);
+  }
+  return at;
+}
 
 @Injectable()
 export class UsersService {
@@ -51,6 +67,15 @@ export class UsersService {
     if (dto.morningBrief !== undefined) data.morningBrief = dto.morningBrief;
     if (dto.eveningCheckin !== undefined) data.eveningCheckin = dto.eveningCheckin;
     if (dto.recordingConsentAcknowledged && !before.recordingConsentAt) data.recordingConsentAt = new Date();
+    if (dto.emailAlerts !== undefined) data.emailAlerts = dto.emailAlerts;
+    if (dto.vipSenders !== undefined) data.vipSenders = normalizeSenders(dto.vipSenders);
+    if (dto.mutedSenders !== undefined) data.mutedSenders = normalizeSenders(dto.mutedSenders);
+    if (dto.pushBudget !== undefined) data.pushBudget = dto.pushBudget;
+    if (dto.criticalBreakThrough !== undefined) data.criticalBreakThrough = dto.criticalBreakThrough;
+    if (dto.focusUntil !== undefined) data.focusUntil = futureWithin(dto.focusUntil, 24, 'focusUntil');
+    if (dto.nudgesPausedUntil !== undefined) {
+      data.nudgesPausedUntil = futureWithin(dto.nudgesPausedUntil, 30 * 24, 'nudgesPausedUntil');
+    }
     const after = Object.keys(data).length ? await this.users.updateSettings(userId, data) : before;
     const reschedule =
       after.autoJoin !== before.autoJoin || after.meetingReminderMinutes !== before.meetingReminderMinutes;

@@ -276,6 +276,13 @@ interface UserSettings {
   recordingConsentAt: ISODate | null;   // when the one-time "let people know you record" note was acknowledged
   morningBrief: boolean;                // push the morning brief at wakeTime
   eveningCheckin: boolean;              // ask "how did today go?" at checkinTime
+  emailAlerts: boolean;                 // push important emails (user-flow §07)
+  vipSenders: string[];                 // always alert, even in quiet hours
+  mutedSenders: string[];               // never alert
+  pushBudget: number;                   // 1..50 normal pushes a day before the rest are bundled (default 8)
+  criticalBreakThrough: boolean;        // critical alerts may break through quiet hours / focus mode
+  focusUntil: ISODate | null;           // focus mode (PATCH: at most 24 h ahead, null = off)
+  nudgesPausedUntil: ISODate | null;    // "take a break" (PATCH: at most 30 days ahead, null = resume)
 }
 
 // The companion's personality profile, built by the first-run get-to-know-you chat.
@@ -431,7 +438,8 @@ type NotificationType =
   | 'meeting_upcoming' | 'report_ready' | 'action_item_due' | 'reminder'
   | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome'
   | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap'
-  | 'capture_ready' | 'meeting_start' | 'meeting_notes';
+  | 'capture_ready' | 'meeting_start' | 'meeting_notes'
+  | 'email_important' | 'email_bundle' | 'task_created' | 'reconnect_needed' | 'push_bundle';
 
 interface AppNotification {
   id: string;
@@ -536,8 +544,14 @@ type TalkAction =
   | { id; type: 'reminder'; status: 'done' | 'failed'; title; remindAt; reminderId; note }
   | { id; type: 'meeting'; status: 'proposed' | 'scheduled' | 'cancelled' | 'needs_connection' | 'failed';
       title; startAt; endAt; attendees: { name; email | null }[]; eventId; note }
-  | { id; type: 'email'; status: 'proposed' | 'sent' | 'cancelled'; to; subject; body; note }
-  | { id; type: 'task'; status: 'done' | 'failed'; title; tool; actionItemId; note }
+  | { id; type: 'email'; status: 'proposed' | 'sent' | 'cancelled' | 'failed'; to; subject; body; note;
+      replyToEmailId?; canSendFromAccount?; sentFromAccount? }
+  | { id; type: 'task'; status: 'done' | 'failed' | 'proposed' | 'duplicate'; title; tool; actionItemId; note;
+      details?; toolTaskId?; url?; externalKey?; duplicate?: ToolDuplicate | null }
+  | { id; type: 'email_summary'; status: 'info'; title; groups: { label; items: EmailItem[] }[]; note }
+  | { id; type: 'tool_list'; status: 'info'; tool: ToolProvider; title; items: ToolItem[]; note }
+  | { id; type: 'note'; status: 'proposed' | 'saved' | 'cancelled' | 'failed'; tool: 'notion'; title; body; url; note }
+  | { id; type: 'pause'; status: 'done'; until: ISODate; note }
   | { id; type: 'unavailable'; status: 'info'; feature: 'email_read' | 'tool'; note };
 
 interface TalkMessage {
@@ -593,6 +607,7 @@ interface TodayBrief {
   checkin: { time: string; status: 'off' | 'upcoming' | 'due' | DailyCheckin['status']; mood: number | null };
   nudge: CompanionNudge | null;         // today's nudge once sent, until dismissed
   overlapIds: string[];                 // today's meetings that overlap another one (double-booked)
+  emails: TodayEmails;                  // what needs the user + the FYI digest (user-flow §07)
 }
 
 interface MoodPoint { date: string; mood: number | null; energy: number | null }
@@ -664,13 +679,73 @@ interface AnalyticsOverview {
 }
 
 // ---------- Integrations / devices ----------
+type EmailProvider = 'gmail' | 'outlook';
+type ToolProvider = 'notion' | 'jira' | 'linear' | 'todoist';
+
 interface Integration {
-  provider: 'google_calendar';
+  provider: 'google_calendar' | EmailProvider | ToolProvider;
+  kind: 'calendar' | 'email' | 'tasks';
+  available: boolean;                   // false: no OAuth client on the server yet ("coming soon")
   connected: boolean;
-  accountEmail: string | null;
+  status: 'connected' | 'needs_reconnect' | 'not_connected';
+  accountEmail: string | null;          // or the workspace / site name for tools
   lastSyncedAt: ISODate | null;
   syncError: string | null;
+  settings: { canSend: boolean | null; targetId: string | null; targetName: string | null; autoSend: boolean } | null;
 }
+
+interface IntegrationTarget { id: string; name: string }
+
+// ---------- Email (user-flow §07) ----------
+type EmailCategory = 'urgent' | 'needs_reply' | 'fyi' | 'promotion' | 'phishing' | 'sensitive';
+
+interface EmailItem {
+  id: string;
+  provider: EmailProvider;
+  fromName: string | null;
+  fromEmail: string | null;
+  subject: string | null;               // null for sensitive mail (never kept)
+  summary: string | null;               // one line: what it says or asks
+  why: string | null;                   // why it matters
+  category: EmailCategory;
+  status: 'new' | 'alerted' | 'held' | 'replied' | 'done' | 'dismissed';
+  receivedAt: ISODate;
+  openDetected: number;                 // deadlines, bills, bookings, travel still to confirm
+  isVip: boolean;
+}
+
+interface EmailDetail extends EmailItem {
+  detected: { id: string; kind: 'deadline' | 'bill' | 'booking' | 'travel'; title: string; dueAt: ISODate | null;
+              status: 'open' | 'added' | 'dismissed'; reminderId: string | null }[];
+  reminderId: string | null;
+  canSend: boolean;                     // read + send connection
+  accountEmail: string | null;
+  webUrl: string | null;                // open in Gmail / Outlook on the web
+}
+
+interface EmailReplyDraft { to: string; subject: string; body: string; canSend: boolean }
+
+interface TodayEmails { connected: boolean; needYou: EmailItem[]; needYouCount: number; fyi: EmailItem[]; fyiCount: number }
+
+// ---------- Tools (user-flow §08) ----------
+interface ToolTask {
+  id: string;
+  provider: ToolProvider;
+  title: string;
+  externalKey: string | null;           // JIRA-123
+  url: string | null;
+  status: 'pending' | 'open' | 'done' | 'failed';
+  source: 'meeting' | 'email' | 'chat' | 'manual';
+  actionItemId: string | null;
+  ownerName: string | null;
+  dueAt: ISODate | null;
+  lastError: string | null;
+  createdAt: ISODate;
+}
+
+interface ToolDuplicate { externalId: string; externalKey: string | null; title: string; url: string | null }
+interface ToolTaskResult { outcome: 'created' | 'duplicate' | 'linked' | 'queued'; task: ToolTask | null; duplicate: ToolDuplicate | null }
+interface ToolItem { id: string; key: string | null; title: string; status: string | null; url: string | null; dueAt: ISODate | null }
 
 interface Device {
   id: string;
@@ -769,11 +844,41 @@ onboarding never blocks on the AI.
 
 | Method | Path | Response `data` |
 |--------|------|-----------------|
-| GET | `/integrations` | `Integration[]` |
+| GET | `/integrations` | `Integration[]`: Google Calendar, Gmail, Outlook, Notion, Jira, Linear, Todoist (`available: false` = no OAuth client on the server yet) |
 | POST | `/integrations/google-calendar/sync` | `{ queued: true }` |
 | DELETE | `/integrations/google-calendar` | `204` (revokes token, stops sync, cancels scheduled bots) |
+| GET | `/integrations/:provider/connect?redirectUri=&mode=read\|send` | `{ url }`: consent URL for `gmail`, `outlook`, `notion`, `jira`, `linear`, `todoist` (`redirectUri` must be in the mobile allowlist; `mode` is for email only, default `send`) |
+| GET | `/integrations/oauth/callback` | Public. The provider redirects here; the API exchanges the code and redirects to `redirectUri?provider=…&status=connected` or `&error=access_denied\|connect_failed` |
+| PATCH | `/integrations/:provider` | `{ targetId?; targetName?; autoSend? }` (tools: default project / database and "send without asking") → `Integration` |
+| DELETE | `/integrations/:provider` | `204` (revokes where possible; emails read from it are deleted, tasks stay as to-dos) |
 
-To reconnect, the client restarts the `/auth/google` flow.
+To reconnect Google Calendar, the client restarts the `/auth/google` flow. Connected apps keep their tokens encrypted (AES-256-GCM); an expired or revoked grant sets `status: 'needs_reconnect'` and sends one `reconnect_needed` notification a day (push + in-app, `data.url = '/connected-apps'`).
+
+### Email (user-flow §07)
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/emails` | `filter=important\|needs_reply\|fyi\|all` (default `all`, which hides promotions), `page`, `limit` | `EmailItem[]` + `meta` |
+| POST | `/emails/sync` | — (check the inbox now) | `{ queued: true }` |
+| GET | `/emails/:id` | — | `EmailDetail` |
+| POST | `/emails/:id/feedback` | `{ kind: 'not_important' \| 'always_alert' }` (mutes the sender / makes them a VIP) | `EmailDetail` |
+| POST | `/emails/:id/status` | `{ status: 'done' \| 'new' }` | `EmailDetail` |
+| POST | `/emails/:id/remind` | `{ remindAt; title? }` (remind me later) | `EmailDetail` |
+| POST | `/emails/:id/detected/:detectedId` | `{ action: 'reminder' \| 'calendar' \| 'dismiss'; remindAt? }` (a deadline, bill, booking or trip the email mentions; reminder defaults to a day before it is due) | `EmailDetail` |
+| POST | `/emails/:id/reply-draft` | `{ instructions? }` (drafts in the user's style; nothing is sent; 20/min) | `EmailReplyDraft` |
+| POST | `/emails/:id/reply` | `{ to; subject; body }` (sends the approved reply from the user's own account, threaded; needs `canSend`; 10/min) | `EmailDetail` |
+
+The worker polls each connected inbox every `EMAIL_POLL_INTERVAL_MINUTES` (Gmail history / Graph inbox). New emails are sorted by rules first (OTPs, passwords and statements → `sensitive`, kept with no subject or summary; muted senders → `fyi`; promotions tab → `promotion`) and then by the AI (`email_triage` prompt): `urgent`, `needs_reply`, `fyi`, `promotion` or `phishing`, a one-line `summary`, `why` it matters and `detected` deadlines / bills / bookings / travel. Email bodies are never stored; rows are deleted after 30 days. Urgent mail and VIP senders get `email_important` (critical: held in quiet hours unless the sender is a VIP or critical alerts may break through; `data.emailId`, opens `/email/:id`), at most 3 an hour; the rest of an inbox flood comes as one `email_bundle`. The first sync of an account reads the last day but never alerts. `TodayBrief.emails` lists what needs the user (last 3 days) and the FYI digest (last day); the morning brief headline and the daily email digest include them.
+
+### Tools: Notion, Jira, Linear, Todoist (user-flow §08)
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/tools/tasks` | `actionItemId?` | `ToolTask[]` (newest first) |
+| POST | `/tools/tasks` | `{ provider?; actionItemId?; title?; details?; dueAt?; ownerName?; source?: 'meeting' \| 'email' \| 'chat' \| 'manual'; force?; mergeWithExternalId? }` (30/min) | `ToolTaskResult` |
+| GET | `/tools/:provider/targets` | — | `IntegrationTarget[]` (Notion databases shared with the app, Jira projects, Linear teams, Todoist projects) |
+
+`POST /tools/tasks` only after the user tapped Send (or turned auto-send on). It creates the to-do in the app when there is none (the linked copy), picks the default project (the first one when none was chosen), and first looks for a similar open task: `outcome: 'duplicate'` creates nothing; call again with `mergeWithExternalId` (link) or `force: true` (create anyway). A tool that is down or needs a reconnect returns `outcome: 'queued'`: the task stays in the app (`status: 'pending'`) and is retried with backoff. An owner who is not the user is assigned when the name is unambiguous (Jira, Linear), otherwise named in the task. `task_created` (push + in-app, `data.url` = the task in the tool). Every 15 minutes the worker reads open tasks back: done there marks the to-do done here; a changed due date moves its reminder.
 
 ### Dashboard and analytics
 
@@ -830,11 +935,14 @@ The app records in parts of about 5 minutes (a crash loses at most the current p
 | POST | `/talk/messages` | `{ text; threadId?; incognito?: boolean; history?: { role; content }[] }` (`history` only for incognito; 20/min; shares the plan's daily AI quota with Ask AI) | `TalkReply` |
 | POST | `/talk/schedule` | `{ messageId?; actionId?; title; startAt; endAt; attendees: { name?; email }[] }` (after the user approved a meeting proposal; Google sends the invites) | `{ eventId; htmlLink; message: TalkMessage \| null }` |
 | POST | `/talk/actions/status` | `{ messageId; actionId; status: 'sent' \| 'cancelled' }` (email sent from the user's mail app, or a proposal dropped) | `TalkMessage` |
+| POST | `/talk/actions/email` | `{ messageId?; actionId?; to; subject; body; replyToEmailId? }` (approved draft sent from the connected Gmail / Outlook; threaded when a reply) | `{ message: TalkMessage \| null }` |
+| POST | `/talk/actions/task` | `{ messageId; actionId; mode: 'send' \| 'merge' \| 'new' }` (a prepared task for a tool; after a duplicate warning: merge or create new) | `TalkMessage` |
+| POST | `/talk/actions/note` | `{ messageId; actionId; title; body }` (approved note saved to the default Notion database) | `TalkMessage` |
 | GET | `/talk/threads` | `page`, `limit` | `{ id; title; createdAt; updatedAt }[]` + `meta` |
 | GET | `/talk/threads/:id/messages` | — | `TalkMessage[]` (oldest first) |
 | DELETE | `/talk/threads/:id` | — | `204` |
 
-Each message searches memory (pgvector over recordings and meetings), then the friend answers in the user's language style and relationship stage. It works out the intent (vent, advice, recall, task, chat). Reminders are set right away; things that affect others are only proposed: a meeting gets a free slot from the synced calendar and the guest's email from past meetings, then waits for approval; an email draft opens in the user's own mail app. Unconnected tools fall back to an in-app to-do; reading email is not available yet. The reply is rewritten when an action did not do what the model said (it never claims "scheduled" for a proposal). New lasting facts go to the profile. Incognito saves and learns nothing. Signs of crisis set `crisis` and the reply shares Tele-MANAS (14416). Talk threads are `kind: 'talk'` and are not listed by Ask AI.
+Each message searches memory (pgvector over recordings and meetings), then the friend answers in the user's language style and relationship stage. It works out the intent (vent, advice, recall, task, chat). Reminders are set right away; things that affect others are only proposed: a meeting gets a free slot from the synced calendar and the guest's email from past meetings, then waits for approval; an email draft opens in the user's own mail app. With Gmail / Outlook connected it summarises the inbox ("summarize my mails today": important, needs a reply, FYI), searches it ("anything from HDFC this week?") and drafts replies to the latest email from someone, sent from the user's account only after Send (`/talk/actions/email`); read-only accounts open the draft in the mail app. Tasks for a connected tool come back as a preview (`task`, `status: 'proposed'`) unless auto-send is on; "what is pending on my Jira?" or "prep me for sprint review" returns a `tool_list` with the open items and an answer that combines them with memory; "save this to Notion" returns a `note` to approve; "give me a break for 3 days" pauses nudges (`pause`). Unconnected tools fall back to an in-app to-do. The reply is rewritten when an action did not do what the model said (it never claims "scheduled" for a proposal). New lasting facts go to the profile. Incognito saves and learns nothing. Signs of crisis set `crisis` and the reply shares Tele-MANAS (14416). Talk threads are `kind: 'talk'` and are not listed by Ask AI.
 
 ### Action items
 
@@ -857,7 +965,7 @@ Each message searches memory (pgvector over recordings and meetings), then the f
 | POST | `/reminders/:id/snooze` | `{ minutes: number }` (5..1440) | `Reminder` |
 | POST | `/reminders/:id/done` | — (stops it, no follow-up; marks a linked action item done; idempotent) | `Reminder` |
 
-A fired reminder that is neither done nor snoozed gets **one** gentle follow-up push (`reminder_followup`) 2 hours later, unless that falls in quiet hours. Reminder pushes carry `categoryId: "reminder"`; the app registers that category with **Done / Snooze 15 min / In 1 hour** buttons.
+A fired reminder that is neither done nor snoozed gets **one** gentle follow-up push (`reminder_followup`) 2 hours later, unless that falls in quiet hours or the user is taking a break. The same reminder from two sources (a recording and a chat, an email and a manual one) within an hour is merged into one. Reminder pushes carry `categoryId: "reminder"`; the app registers that category with **Done / Snooze 15 min / In 1 hour** buttons.
 
 ### Today and daily rhythm
 
@@ -882,7 +990,10 @@ The worker runs a 5-minute tick (`companion` queue) and, in each user's time zon
 | GET | `/notifications` | `unreadOnly?=true`, `page`, `limit` | `AppNotification[]` + `meta` |
 | GET | `/notifications/unread-count` | — | `{ count: number }` |
 | PATCH | `/notifications/:id/read` | — | `AppNotification` |
+| POST | `/notifications/:id/opened` | — (a push was tapped: marks it read and records the hour, so nudges move to times the user answers) | `AppNotification` |
 | POST | `/notifications/read-all` | — | `{ updated: number }` |
+
+**How notifications decide (user-flow §09).** Every push has a priority: **critical** (timed reminders, `action_item_due`, meeting brief / starting, urgent email) is pushed now, or held until quiet hours / focus mode end unless `criticalBreakThrough` is on or the sender is a VIP; **normal** (capture ready, task created, check-in, nudge …) is pushed now, but in quiet hours or beyond the daily `pushBudget` (default 8; the morning brief, check-in and recap don't count) it is counted into one `push_bundle` ("3 new updates") at the end of quiet hours or the next hour; **low** (the digest) is never pushed. The same notification twice within 10 minutes is merged. Everything still lands in the in-app inbox. `nudgesPausedUntil` ("take a break") stops the morning brief, check-in, proactive nudges, reminder follow-ups and quick-notes prompts; timed reminders still come. With push off, the inbox plus the daily email digest carry everything.
 
 ### Devices (push)
 

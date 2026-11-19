@@ -158,6 +158,24 @@ export class AppConfig {
     };
   }
 
+  /** OAuth clients of connected apps (email and task tools); a provider is offered only when configured. */
+  get integrations() {
+    const e = this.env;
+    const pair = (id: string | undefined, secret: string | undefined) =>
+      id && secret && !DUMMY_VALUES.has(id.toLowerCase()) ? { clientId: id, clientSecret: secret } : null;
+    return {
+      redirectUri: e.INTEGRATIONS_REDIRECT_URI ?? `${this.urls.api}/api/v1/integrations/oauth/callback`,
+      gmail: e.GMAIL_ENABLED ? pair(e.GOOGLE_CLIENT_ID, e.GOOGLE_CLIENT_SECRET) : null,
+      outlook: pair(e.MICROSOFT_CLIENT_ID, e.MICROSOFT_CLIENT_SECRET),
+      microsoftTenant: e.MICROSOFT_TENANT,
+      notion: pair(e.NOTION_CLIENT_ID, e.NOTION_CLIENT_SECRET),
+      jira: pair(e.ATLASSIAN_CLIENT_ID, e.ATLASSIAN_CLIENT_SECRET),
+      linear: pair(e.LINEAR_CLIENT_ID, e.LINEAR_CLIENT_SECRET),
+      todoist: pair(e.TODOIST_CLIENT_ID, e.TODOIST_CLIENT_SECRET),
+      emailPollIntervalMinutes: e.EMAIL_POLL_INTERVAL_MINUTES,
+    };
+  }
+
   get calendarSyncIntervalMinutes(): number {
     return this.env.CALENDAR_SYNC_INTERVAL_MINUTES;
   }

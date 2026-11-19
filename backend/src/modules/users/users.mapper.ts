@@ -41,16 +41,31 @@ export function toUserSettings(row: UserSettingsRow): UserSettings {
     recordingConsentAt: row.recordingConsentAt?.toISOString() ?? null,
     morningBrief: row.morningBrief,
     eveningCheckin: row.eveningCheckin,
+    emailAlerts: row.emailAlerts,
+    vipSenders: row.vipSenders,
+    mutedSenders: row.mutedSenders,
+    pushBudget: row.pushBudget,
+    criticalBreakThrough: row.criticalBreakThrough,
+    focusUntil: row.focusUntil && row.focusUntil.getTime() > Date.now() ? row.focusUntil.toISOString() : null,
+    nudgesPausedUntil:
+      row.nudgesPausedUntil && row.nudgesPausedUntil.getTime() > Date.now()
+        ? row.nudgesPausedUntil.toISOString()
+        : null,
   };
 }
 
 export function toIntegration(row: GoogleAccountRow | null): Integration {
+  const connected = row?.calendarConnected ?? false;
   return {
     provider: 'google_calendar',
-    connected: row?.calendarConnected ?? false,
+    kind: 'calendar',
+    available: true,
+    connected,
+    status: connected ? 'connected' : row?.syncError ? 'needs_reconnect' : 'not_connected',
     accountEmail: row?.googleEmail ?? null,
     lastSyncedAt: row?.lastSyncedAt?.toISOString() ?? null,
     syncError: row?.syncError ?? null,
+    settings: null,
   };
 }
 

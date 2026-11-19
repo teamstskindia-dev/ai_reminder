@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import { getErrorMessage } from '@/api/errors';
 import { useUnreadCount } from '@/api/hooks/notifications';
 import { qk } from '@/api/queryKeys';
+import { markNotificationOpened } from '@/api/resources/notifications';
 import { completeReminder, snoozeReminder } from '@/api/resources/reminders';
 import type { FeatureKey } from '@/api/types';
 import { logger, reportError } from '@/utils/logger';
@@ -70,6 +71,13 @@ export function useNotificationRouting(options: { signedIn: boolean; isEnabled: 
     if (!signedIn || !navigationReady) return;
 
     const open = (response: Notifications.NotificationResponse) => {
+      // Teaches the friend which times of day the user answers pushes (user-flow §09). Best effort.
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      if (typeof data?.notificationId === 'string') {
+        markNotificationOpened(data.notificationId)
+          .then(() => qc.invalidateQueries({ queryKey: qk.notifications.all }))
+          .catch(() => undefined);
+      }
       void runReminderAction(response).then((handled) => {
         if (handled) {
           void qc.invalidateQueries({ queryKey: qk.reminders.all });
