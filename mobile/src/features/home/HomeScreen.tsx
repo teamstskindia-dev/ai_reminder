@@ -41,6 +41,7 @@ import { ActionItemRow } from '@/features/action-items/ActionItemRow';
 import { CaptureCards } from '@/features/capture/CaptureCards';
 import { openActionItemEditor, useActionItemActions } from '@/features/action-items/useActionItemMenu';
 import { moodEmoji } from '@/features/companion/mood';
+import { TodayEmailsCard } from '@/features/email/TodayEmailsCard';
 import { MeetingCard } from '@/features/meetings/MeetingCard';
 import { ReminderRow } from '@/features/reminders/ReminderRow';
 import { openReminderEditor, useReminderMenu } from '@/features/reminders/useReminderMenu';
@@ -166,7 +167,10 @@ function CheckinCard({ today, lang }: { today: TodayBrief; lang: LanguageStyle }
   );
 }
 
-/** Today (user-flow §03): brief, nudge, evening check-in, today's meetings, reminders and open promises. */
+/**
+ * Today (user-flow §03): brief, nudge, evening check-in, today's meetings, emails that need you (§07),
+ * reminders and open promises.
+ */
 export function HomeScreen() {
   const theme = useTheme();
   const now = useNow();
@@ -263,6 +267,8 @@ export function HomeScreen() {
                 </Card>
               )}
             </View>
+
+            <TodayEmailsCard emails={t.emails} lang={lang} />
 
             {showReminders ? (
               <View style={styles.section}>

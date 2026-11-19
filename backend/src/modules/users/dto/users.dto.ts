@@ -1,7 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsString, Length, Matches, Max, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
 import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
-import { IsOptionalNonNull, IsOptionalNullable, IsTimeZone } from '../../../common/validation/validators';
+import { IsDateTime, IsOptionalNonNull, IsOptionalNullable, IsTimeZone } from '../../../common/validation/validators';
 
 /** 24h local time, e.g. 07:30. */
 export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -106,4 +118,50 @@ export class UpdateUserSettingsDto {
   @IsOptionalNonNull()
   @IsIn([true], { message: 'recordingConsentAcknowledged can only be set to true' })
   recordingConsentAcknowledged?: true;
+
+  /** Push important emails (user-flow §07). */
+  @IsOptionalNonNull()
+  @IsBoolean()
+  emailAlerts?: boolean;
+
+  /** Senders that always alert (emails). Replaces the list. */
+  @ApiPropertyOptional({ type: [String], maxItems: 100 })
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsEmail({}, { each: true })
+  vipSenders?: string[];
+
+  /** Senders that never alert (emails). Replaces the list. */
+  @ApiPropertyOptional({ type: [String], maxItems: 500 })
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsEmail({}, { each: true })
+  mutedSenders?: string[];
+
+  /** Normal pushes per local day before the rest are bundled into one (user-flow §09). */
+  @ApiInteger({ minimum: 1, maximum: 50 })
+  @IsOptionalNonNull()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  pushBudget?: number;
+
+  /** Critical alerts may break through quiet hours and focus mode. */
+  @IsOptionalNonNull()
+  @IsBoolean()
+  criticalBreakThrough?: boolean;
+
+  /** Focus mode until this time; `null` turns it off. At most 24 hours ahead. */
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  @IsOptionalNullable()
+  @IsDateTime()
+  focusUntil?: string | null;
+
+  /** "Take a break" from nudges until this time; `null` resumes them. At most 30 days ahead. */
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  @IsOptionalNullable()
+  @IsDateTime()
+  nudgesPausedUntil?: string | null;
 }

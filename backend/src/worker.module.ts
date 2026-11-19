@@ -15,14 +15,17 @@ import { RhythmService } from './modules/companion/rhythm.service';
 import { BroadcastDispatchService } from './modules/notifications/broadcast-dispatch.service';
 import { DigestService } from './modules/notifications/digest.service';
 import { DigestProcessor, NotificationsProcessor } from './modules/notifications/notifications.processor';
+import { EmailModule } from './modules/email/email.module';
+import { IntegrationsProcessor } from './modules/integrations/integrations.processor';
+import { ToolsModule } from './modules/tools/tools.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReminderDispatchService } from './modules/notifications/reminder-dispatch.service';
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { UsersModule } from './modules/users/users.module';
 
 /**
- * Worker process: calendar-sync, bot-events, ai-processing, notifications, digest and companion (daily
- * rhythm) processors + repeatable jobs.
+ * Worker process: calendar-sync, bot-events, ai-processing, notifications, digest, companion (daily
+ * rhythm) and integrations (email, tools) processors + repeatable jobs.
  */
 @Module({
   imports: [
@@ -34,6 +37,8 @@ import { UsersModule } from './modules/users/users.module';
     RemindersModule,
     BotEventsModule,
     CompanionModule,
+    EmailModule,
+    ToolsModule,
   ],
   providers: [
     RepeatableJobsService,
@@ -49,6 +54,7 @@ import { UsersModule } from './modules/users/users.module';
     NightlyService,
     RhythmService,
     CompanionProcessor,
+    IntegrationsProcessor,
   ],
 })
 export class WorkerModule {}

@@ -63,50 +63,60 @@ export class CompanionContextService {
   async day(userId: string, timezone: string, day: string): Promise<DayFacts> {
     const start = atLocalTime(day, timezone, '00:00');
     const end = new Date(start.getTime() + 24 * 3600_000);
-    const [meetingList, reminders, openItems, openRows, doneReminders, doneItems, captureReports] = await Promise.all([
-      this.prisma.meeting.findMany({
-        where: {
-          userId,
-          startAt: { gte: start, lt: end },
-          status: { notIn: ['cancelled'] },
-          source: { not: 'capture' },
-        },
-        orderBy: { startAt: 'asc' },
-        select: { id: true, title: true, startAt: true, endAt: true, status: true },
-        take: 20,
-      }),
-      this.prisma.reminder.count({
-        where: { userId, remindAt: { gte: start, lt: end }, status: { in: ['pending', 'sent'] } },
-      }),
-      this.prisma.actionItem.count({ where: { userId, status: 'open' } }),
-      this.prisma.actionItem.findMany({
-        where: { userId, status: 'open' },
-        orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-        select: { title: true },
-        take: 5,
-      }),
-      this.prisma.reminder.findMany({
-        where: { userId, doneAt: { gte: start, lt: end } },
-        select: { title: true },
-        take: 10,
-      }),
-      this.prisma.actionItem.findMany({
-        where: { userId, status: 'done', completedAt: { gte: start, lt: end } },
-        select: { title: true },
-        take: 10,
-      }),
-      this.prisma.meetingReport.findMany({
-        where: { userId, meeting: { source: 'capture', startAt: { gte: start, lt: end }, reviewedAt: null } },
-        select: { insights: true },
-        take: 10,
-      }),
-    ]);
+    const [meetingList, reminders, openItems, openRows, doneReminders, doneItems, captureReports, emails] =
+      await Promise.all([
+        this.prisma.meeting.findMany({
+          where: {
+            userId,
+            startAt: { gte: start, lt: end },
+            status: { notIn: ['cancelled'] },
+            source: { not: 'capture' },
+          },
+          orderBy: { startAt: 'asc' },
+          select: { id: true, title: true, startAt: true, endAt: true, status: true },
+          take: 20,
+        }),
+        this.prisma.reminder.count({
+          where: { userId, remindAt: { gte: start, lt: end }, status: { in: ['pending', 'sent'] } },
+        }),
+        this.prisma.actionItem.count({ where: { userId, status: 'open' } }),
+        this.prisma.actionItem.findMany({
+          where: { userId, status: 'open' },
+          orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+          select: { title: true },
+          take: 5,
+        }),
+        this.prisma.reminder.findMany({
+          where: { userId, doneAt: { gte: start, lt: end } },
+          select: { title: true },
+          take: 10,
+        }),
+        this.prisma.actionItem.findMany({
+          where: { userId, status: 'done', completedAt: { gte: start, lt: end } },
+          select: { title: true },
+          take: 10,
+        }),
+        this.prisma.meetingReport.findMany({
+          where: { userId, meeting: { source: 'capture', startAt: { gte: start, lt: end }, reviewedAt: null } },
+          select: { insights: true },
+          take: 10,
+        }),
+        this.prisma.emailMessage.count({
+          where: {
+            userId,
+            category: { in: ['urgent', 'needs_reply'] },
+            status: { in: ['new', 'alerted', 'held'] },
+            receivedAt: { gte: new Date(end.getTime() - 3 * 86_400_000) },
+          },
+        }),
+      ]);
     return {
       meetings: meetingList.length,
       overlaps: overlappingIds(meetingList).length,
       firstMeetingAt: meetingList[0] ? formatTime(meetingList[0].startAt, timezone) : null,
       reminders,
       openItems,
+      emails,
       meetingList,
       openTitles: openRows.map((r) => r.title),
       doneTitles: [...new Set([...doneReminders, ...doneItems].map((r) => r.title))],

@@ -142,6 +142,10 @@ function RootNavigator() {
             options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }}
           />
           <Stack.Screen name="capture/[id]" options={{ headerShown: true, title: '' }} />
+          <Stack.Screen name="connected-apps" options={{ headerShown: true, title: 'Connected apps' }} />
+          <Stack.Screen name="emails" options={{ headerShown: true, title: 'Email' }} />
+          <Stack.Screen name="email/[id]" options={{ headerShown: true, title: '' }} />
+          <Stack.Screen name="integrations/callback" options={{ animation: 'fade' }} />
         </Stack.Protected>
 
         <Stack.Protected guard={!signedIn && !onboardingSeen} redirectTo={signedIn ? signedInHome : '/login'}>

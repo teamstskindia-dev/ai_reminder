@@ -17,6 +17,16 @@ export const qk = {
   recaps: ['recaps'] as const,
   analytics: (range: AnalyticsRange) => ['analytics', range] as const,
   integrations: ['integrations'] as const,
+  toolTargets: (provider: string) => ['integrations', 'targets', provider] as const,
+  emails: {
+    all: ['emails'] as const,
+    list: (filter: string) => ['emails', 'list', filter] as const,
+    detail: (id: string) => ['emails', 'detail', id] as const,
+  },
+  toolTasks: {
+    all: ['tool-tasks'] as const,
+    forItem: (actionItemId: string) => ['tool-tasks', actionItemId] as const,
+  },
   meetings: {
     all: ['meetings'] as const,
     lists: ['meetings', 'list'] as const,

@@ -490,6 +490,8 @@ export const QUEUE_NAMES = [
   'ai-processing',
   'notifications',
   'digest',
+  'companion',
+  'integrations',
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 

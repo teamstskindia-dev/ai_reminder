@@ -16,6 +16,11 @@ export function markNotificationRead(id: string): Promise<AppNotification> {
   return api<AppNotification>(`/notifications/${id}/read`, { method: 'PATCH' });
 }
 
+/** A push was tapped: marks it read and teaches the friend which times of day work (user-flow §09). */
+export function markNotificationOpened(id: string): Promise<AppNotification> {
+  return api<AppNotification>(`/notifications/${id}/opened`, { method: 'POST' });
+}
+
 export function markAllNotificationsRead(): Promise<{ updated: number }> {
   return api<{ updated: number }>('/notifications/read-all', { method: 'POST' });
 }

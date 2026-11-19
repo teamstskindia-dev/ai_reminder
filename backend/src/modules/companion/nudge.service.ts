@@ -10,6 +10,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { removeJob, upsertJob } from '../../infra/queue/job-utils';
 import { JOB, JobId, NudgeJob, QUEUE } from '../../infra/queue/queue.constants';
 import { DeliveryService } from '../notifications/delivery.service';
+import { bestHour, ignoredHour, nudgesPaused, toEngagement } from '../notifications/notification-policy';
 import { chatLanguage, toMessages } from './checkin.service';
 import { CompanionChatService } from './companion-chat.service';
 import { CompanionContextService, type CompanionUser } from './companion-context.service';
@@ -54,6 +55,7 @@ export class NudgeService {
     day: string,
     plan: { text: string; time: string | null; reason: string | null },
   ): Promise<CompanionNudge | null> {
+    if (nudgesPaused(user.settings)) return null;
     const sendAt = this.pickTime(user, day, plan.time);
     if (!sendAt) return null;
     let row: CompanionNudgeRow;
@@ -90,7 +92,12 @@ export class NudgeService {
     if (!row || row.status !== 'scheduled') return 'skipped';
     const user = await this.context.user(row.userId);
     const s = user?.settings;
-    if (!user || !s || inQuietHours(localMinutes(new Date(), user.timezone), s.quietHoursStart, s.quietHoursEnd)) {
+    if (
+      !user ||
+      !s ||
+      nudgesPaused(s) ||
+      inQuietHours(localMinutes(new Date(), user.timezone), s.quietHoursStart, s.quietHoursEnd)
+    ) {
       await this.prisma.companionNudge.update({ where: { id: row.id }, data: { status: 'cancelled' } });
       return 'skipped';
     }
@@ -182,7 +189,15 @@ export class NudgeService {
    */
   private pickTime(user: CompanionUser, day: string, suggested: string | null): Date | null {
     const s = user.settings;
-    const time = toMinutes(suggested) !== null ? (suggested as string) : DEFAULT_NUDGE_TIME;
+    // Learns timing (user-flow §09): pushes at an hour the user keeps ignoring move to the hour they answer.
+    const engagement = toEngagement(s.pushEngagement);
+    const learned = bestHour(engagement);
+    const suggestedMin = toMinutes(suggested);
+    let time = suggestedMin !== null ? (suggested as string) : DEFAULT_NUDGE_TIME;
+    const timeHour = Math.floor((toMinutes(time) ?? 660) / 60);
+    if (learned !== null && (suggestedMin === null || ignoredHour(engagement, timeHour))) {
+      time = `${String(learned).padStart(2, '0')}:00`;
+    }
     let at = atLocalTime(day, user.timezone, time);
     const soon = Date.now() + 15 * 60_000;
     if (at.getTime() < soon) at = new Date(soon);

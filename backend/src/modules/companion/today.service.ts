@@ -4,6 +4,7 @@ import type { TodayBrief, TodayCheckinStatus } from '../../common/types/api.type
 import { formatTime, zonedParts } from '../../common/utils/time.util';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ActionItemsService } from '../action-items/action-items.service';
+import { EmailService } from '../email/email.service';
 import { MEETING_LIST_INCLUDE, toMeetingListItem } from '../meetings/meetings.mapper';
 import { overlappingIds } from '../meetings/overlap.util';
 import { REMINDER_INCLUDE, toReminder } from '../reminders/reminders.mapper';
@@ -14,7 +15,8 @@ import { atLocalTime, dateOnly, dayKey, localMinutes, toMinutes } from './rhythm
 
 /**
  * The Today screen (user-flow §03): a greeting in the user's vibe, one line about the day, today's
- * meetings, reminders that still need them, open promises, the evening check-in state and any nudge.
+ * meetings, reminders that still need them, open promises, the evening check-in state, any nudge and
+ * the emails that need them (user-flow §07).
  */
 @Injectable()
 export class TodayService {
@@ -23,6 +25,7 @@ export class TodayService {
     private readonly context: CompanionContextService,
     private readonly actionItems: ActionItemsService,
     private readonly nudges: NudgeService,
+    private readonly emails: EmailService,
   ) {}
 
   async build(userId: string): Promise<TodayBrief> {
@@ -34,7 +37,7 @@ export class TodayService {
     const start = atLocalTime(day, tz, '00:00');
     const end = new Date(start.getTime() + 24 * 3600_000);
 
-    const [meetings, reminders, openItems, openCount, checkin, nudge] = await Promise.all([
+    const [meetings, reminders, openItems, openCount, checkin, nudge, emails] = await Promise.all([
       this.prisma.meeting.findMany({
         // Recorded conversations have their own cards on Today.
         where: {
@@ -60,6 +63,7 @@ export class TodayService {
         select: { status: true, mood: true },
       }),
       this.nudges.current(userId, tz),
+      this.emails.today(userId),
     ]);
 
     const s = user.settings;
@@ -78,6 +82,7 @@ export class TodayService {
         reminders: reminders.length,
         openItems: openCount,
         overlaps: overlappingIds(meetings).length,
+        emails: emails.needYouCount,
       }),
       counts: { meetings: meetings.length, reminders: reminders.length, openItems: openCount },
       meetings: meetings.map(toMeetingListItem),
@@ -86,6 +91,7 @@ export class TodayService {
       checkin: { time: s.checkinTime, status: checkinStatus, mood: checkin?.mood ?? null },
       nudge,
       overlapIds: overlappingIds(meetings),
+      emails,
     };
   }
 }

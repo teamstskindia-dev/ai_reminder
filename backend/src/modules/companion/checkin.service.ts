@@ -13,6 +13,7 @@ import type { DailyCheckinRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { DeliveryService } from '../notifications/delivery.service';
+import { nudgesPaused } from '../notifications/notification-policy';
 import { detectLanguageStyle } from '../onboarding/onboarding.language';
 import { CompanionChatService } from './companion-chat.service';
 import { CompanionContextService, type CompanionUser } from './companion-context.service';
@@ -87,7 +88,7 @@ export class CheckinService {
   /** Worker: sends the check-in push for `day` (once), unless the user already checked in. */
   async prompt(userId: string, day: string): Promise<'sent' | 'skipped'> {
     const user = await this.context.user(userId);
-    if (!user || !user.settings.eveningCheckin) return 'skipped';
+    if (!user || !user.settings.eveningCheckin || nudgesPaused(user.settings)) return 'skipped';
     const existing = await this.prisma.dailyCheckin.findUnique({
       where: { userId_localDate: { userId, localDate: dateOnly(day) } },
     });

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { AlarmClock, CircleCheck, Circle, Pencil, Trash, Video } from 'lucide-react-native';
+import { AlarmClock, CircleCheck, Circle, Pencil, Send, Trash, Video } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -7,6 +7,8 @@ import { useDeleteActionItem, useToggleActionItem } from '@/api/hooks/actionItem
 import type { ActionItem } from '@/api/types';
 import { ActionSheet, type ActionSheetOption } from '@/components/ui/ActionSheet';
 import type { SwipeAction } from '@/components/ui/SwipeRow';
+import { providerName } from '@/features/integrations/connect';
+import { useSendToTool } from '@/features/tools/useSendToTool';
 import { useConfig } from '@/providers/config/ConfigProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 import { haptics } from '@/utils/haptics';
@@ -36,6 +38,8 @@ export function useActionItemActions() {
   const theme = useTheme();
   const toggle = useToggleActionItem();
   const remove = useDeleteActionItem();
+  // Notion, Jira and other tools (user-flow §08): a to-do can go where the user's work lives.
+  const tool = useSendToTool();
   const [menuItem, setMenuItem] = useState<ActionItem | null>(null);
 
   const onToggle = (item: ActionItem) => {
@@ -68,6 +72,17 @@ export function useActionItemActions() {
         ...(isEnabled('reminders') && menuItem.status !== 'done'
           ? [{ key: 'remind', label: 'Remind me', icon: AlarmClock, onPress: () => openReminderFor(menuItem) }]
           : []),
+        ...(tool.tools.length && menuItem.status === 'open'
+          ? [
+              {
+                key: 'tool',
+                label: tool.tools.length === 1 ? `Send to ${providerName(tool.tools[0])}` : 'Send to a tool…',
+                icon: Send,
+                onPress: () =>
+                  tool.send({ actionItemId: menuItem.id, source: menuItem.meetingId ? 'meeting' : 'manual' }),
+              },
+            ]
+          : []),
         ...(menuItem.meetingId
           ? [{ key: 'meeting', label: 'Open meeting', icon: Video, onPress: () => router.push(`/meeting/${menuItem.meetingId}`) }]
           : []),
@@ -76,13 +91,16 @@ export function useActionItemActions() {
     : [];
 
   const sheet = (
-    <ActionSheet
-      visible={menuItem !== null}
-      title={menuItem?.title}
-      message={menuItem?.meetingTitle ?? undefined}
-      options={options}
-      onClose={() => setMenuItem(null)}
-    />
+    <>
+      <ActionSheet
+        visible={menuItem !== null}
+        title={menuItem?.title}
+        message={menuItem?.meetingTitle ?? undefined}
+        options={options}
+        onClose={() => setMenuItem(null)}
+      />
+      {tool.sheet}
+    </>
   );
 
   /** Swipe right to complete / reopen, swipe left to delete. */
