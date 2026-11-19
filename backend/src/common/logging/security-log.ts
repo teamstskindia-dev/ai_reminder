@@ -12,6 +12,7 @@ export type SecurityEvent =
   | 'admin_sessions_revoked'
   | 'user_sessions_revoked'
   | 'google_grant_revoked'
+  | 'connected_app_access_lost'
   | 'email_code_failed';
 
 /** Security events are logged at `warn` with a `security` tag so they can be alerted on. */

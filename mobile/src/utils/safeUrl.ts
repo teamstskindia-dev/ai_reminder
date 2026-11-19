@@ -83,10 +83,17 @@ function allowInternal(pathname: string, query: Record<string, string>): { path:
         return { path: '/checkin', feature: null };
       case 'recap':
         return { path: '/recap', feature: null };
+      case 'connected-apps':
+        return { path: '/connected-apps', feature: null };
+      case 'emails': {
+        const filter = ['important', 'needs_reply', 'fyi', 'all'].includes(query.filter ?? '') ? `?filter=${query.filter}` : '';
+        return { path: `/emails${filter}`, feature: null };
+      }
       default:
         return null;
     }
   }
+  if (first === 'email' && UUID_RE.test(second)) return { path: `/email/${second.toLowerCase()}`, feature: null };
   if (first === 'meeting' && UUID_RE.test(second)) return { path: `/meeting/${second.toLowerCase()}`, feature: null };
   if (first === 'reminder' && UUID_RE.test(second)) return { path: `/reminder/${second.toLowerCase()}`, feature: 'reminders' };
   if (first === 'nudge' && UUID_RE.test(second)) return { path: `/nudge/${second.toLowerCase()}`, feature: null };

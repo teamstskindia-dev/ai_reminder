@@ -83,6 +83,9 @@ model User {
   dailyCheckins     DailyCheckin[]
   companionNudges   CompanionNudge[]
   weeklyRecaps      WeeklyRecap[]
+  connectedAccounts ConnectedAccount[]
+  emailMessages     EmailMessage[]
+  toolTasks         ToolTask[]
 
   @@index([createdAt(sort: Desc)], map: "users_created_at_idx")
   @@map("users")
@@ -106,6 +109,20 @@ model UserSettings {
   /// Push the morning brief at wake time / ask "how did today go?" at check-in time.
   morningBrief           Boolean   @default(true) @map("morning_brief")
   eveningCheckin         Boolean   @default(true) @map("evening_checkin")
+  /// Reading your email (user-flow §07): push important emails; VIPs always alert, muted senders never do.
+  emailAlerts            Boolean   @default(true) @map("email_alerts")
+  vipSenders             String[]  @default([]) @map("vip_senders")
+  mutedSenders           String[]  @default([]) @map("muted_senders")
+  /// How notifications decide (§09): normal pushes per local day before they are bundled into one.
+  pushBudget             Int       @default(8) @map("push_budget")
+  /// Critical alerts (timed reminders, meeting starting, urgent email) may break through quiet hours.
+  criticalBreakThrough   Boolean   @default(false) @map("critical_break_through")
+  /// Focus mode: treated like quiet hours until this time.
+  focusUntil             DateTime? @map("focus_until") @db.Timestamptz(6)
+  /// "Take a break": no friend nudges (brief, check-in, nudges, follow-ups) until this time.
+  nudgesPausedUntil      DateTime? @map("nudges_paused_until") @db.Timestamptz(6)
+  /// Per local hour "0".."23": [pushes sent, pushes opened]; the friend learns which times work.
+  pushEngagement         Json      @default("{}") @map("push_engagement")
   updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -369,6 +386,7 @@ model ActionItem {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   meeting   Meeting?   @relation(fields: [meetingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   reminders Reminder[]
+  toolTasks ToolTask[]
 
   @@index([userId, status, dueAt], map: "action_items_user_status_idx")
   @@index([meetingId], map: "action_items_meeting_idx")
@@ -399,6 +417,7 @@ model Reminder {
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   meeting    Meeting?    @relation(fields: [meetingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   actionItem ActionItem? @relation(fields: [actionItemId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  emails     EmailMessage[]
 
   @@index([userId, remindAt], map: "reminders_user_time_idx")
   @@map("reminders")
@@ -495,6 +514,106 @@ model WeeklyRecap {
 
   @@unique([userId, weekStart])
   @@map("weekly_recaps")
+}
+
+// -----------------------------------------------------------------------------
+// Connected apps (user-flow §07 email, §08 tools)
+// -----------------------------------------------------------------------------
+/// One connected Gmail / Outlook inbox or Notion / Jira / Linear / Todoist workspace per user and provider.
+model ConnectedAccount {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  provider          String
+  /// 'email' or 'tasks'.
+  kind              String
+  accountLabel      String?   @map("account_label")
+  externalAccountId String?   @map("external_account_id")
+  accessTokenEnc    String?   @map("access_token_enc")
+  refreshTokenEnc   String?   @map("refresh_token_enc")
+  tokenExpiresAt    DateTime? @map("token_expires_at") @db.Timestamptz(6)
+  scope             String?
+  /// 'connected' or 'needs_reconnect' (access expired or revoked).
+  status            String    @default("connected")
+  lastError         String?   @map("last_error")
+  /// Email: { canSend }. Tools: { targetId, targetName, autoSend, siteUrl, cloudId }.
+  settings          Json      @default("{}")
+  /// Gmail historyId / Outlook last received time.
+  syncCursor        String?   @map("sync_cursor")
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  emails    EmailMessage[]
+  toolTasks ToolTask[]
+
+  @@unique([userId, provider])
+  @@index([provider, status], map: "connected_accounts_provider_idx")
+  @@map("connected_accounts")
+}
+
+/// What the friend kept from one email: never the body; sensitive mail keeps no subject or summary.
+model EmailMessage {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  accountId         String    @map("account_id") @db.Uuid
+  providerMessageId String    @map("provider_message_id")
+  providerThreadId  String?   @map("provider_thread_id")
+  fromName          String?   @map("from_name")
+  fromEmail         String?   @map("from_email")
+  subject           String?
+  summary           String?
+  why               String?
+  category          String
+  status            String    @default("new")
+  /// [{ id, kind, title, dueAt, status }] deadlines, bills, bookings and travel.
+  detected          Json      @default("[]")
+  receivedAt        DateTime  @map("received_at") @db.Timestamptz(6)
+  alertedAt         DateTime? @map("alerted_at") @db.Timestamptz(6)
+  reminderId        String?   @map("reminder_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  account  ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reminder Reminder?        @relation(fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([accountId, providerMessageId])
+  @@index([userId, receivedAt(sort: Desc)], map: "email_messages_user_idx")
+  @@index([userId, category, status, receivedAt(sort: Desc)], map: "email_messages_user_category_idx")
+  @@map("email_messages")
+}
+
+/// The app's linked copy of a task created in Notion, Jira, Linear or Todoist.
+model ToolTask {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  accountId     String?   @map("account_id") @db.Uuid
+  provider      String
+  actionItemId  String?   @map("action_item_id") @db.Uuid
+  externalId    String?   @map("external_id")
+  externalKey   String?   @map("external_key")
+  url           String?
+  title         String
+  details       String?
+  ownerName     String?   @map("owner_name")
+  /// pending (not sent yet / retrying), open, done, failed.
+  status        String    @default("pending")
+  /// meeting, email, chat or manual.
+  source        String    @default("manual")
+  dueAt         DateTime? @map("due_at") @db.Timestamptz(6)
+  lastError     String?   @map("last_error")
+  attempts      Int       @default(0)
+  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  account    ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  actionItem ActionItem?       @relation(fields: [actionItemId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "tool_tasks_user_idx")
+  @@map("tool_tasks")
 }
 
 // -----------------------------------------------------------------------------

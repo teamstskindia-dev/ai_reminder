@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { DeliveryService } from '../notifications/delivery.service';
+import { nudgesPaused } from '../notifications/notification-policy';
 import { inQuietHours, localMinutes } from './rhythm.util';
 
 /** Statuses in which nobody has recorded the meeting yet (the bot records into the meeting itself). */
@@ -34,7 +35,7 @@ export class MeetingPromptsService {
           select: {
             status: true,
             timezone: true,
-            settings: { select: { quietHoursStart: true, quietHoursEnd: true } },
+            settings: { select: { quietHoursStart: true, quietHoursEnd: true, nudgesPausedUntil: true } },
           },
         },
       },
@@ -68,6 +69,7 @@ export class MeetingPromptsService {
     if (s && inQuietHours(localMinutes(new Date(), m.user.timezone), s.quietHoursStart, s.quietHoursEnd)) {
       return 'skipped';
     }
+    if (s && nudgesPaused(s)) return 'skipped';
     await this.delivery.deliver({
       userId: m.userId,
       type: 'meeting_notes',

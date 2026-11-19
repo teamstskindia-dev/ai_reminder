@@ -10,6 +10,8 @@ export const QUEUE = {
   BOT_EVENTS: 'bot-events',
   /** Daily rhythm (user-flow §03): morning brief, evening check-in, night learning, nudges, weekly recap. */
   COMPANION: 'companion',
+  /** Connected apps (user-flow §07, §08): email polling and triage, task creation retries and status watching. */
+  INTEGRATIONS: 'integrations',
 } as const;
 export type QueueNameValue = (typeof QUEUE)[keyof typeof QUEUE];
 
@@ -35,6 +37,19 @@ export const JOB = {
   MEETING_START: 'meeting-start',
   /** "Add quick notes?" after an event that was not recorded. */
   MEETING_NOTES: 'meeting-notes',
+  /** Critical push held in quiet hours / focus mode, delivered when they end (user-flow §09). */
+  HELD_PUSH: 'held-push',
+  /** One push for the normal notifications held back by quiet hours or the daily push budget. */
+  PUSH_BUNDLE: 'push-bundle',
+  /** Every few minutes: one EMAIL_SYNC per connected inbox (user-flow §07). */
+  EMAIL_POLL: 'email-poll',
+  EMAIL_SYNC: 'email-sync',
+  /** Important emails beyond the hourly cap, batched into one push. */
+  EMAIL_BUNDLE: 'email-bundle',
+  /** Every 15 minutes: status and due dates of open tasks in Notion / Jira / Linear / Todoist (§08). */
+  TOOLS_WATCH: 'tools-watch',
+  /** A task the tool could not take (down, rate limited): retried with backoff. */
+  TOOL_TASK_RETRY: 'tool-task-retry',
 } as const;
 
 /** Custom job ids (BullMQ forbids ':' in custom ids). */
@@ -53,6 +68,12 @@ export const JobId = {
   meetingNotes: (meetingId: string) => `meeting-notes-${meetingId}`,
   /** One job per webhook delivery id: Recall.ai retries reuse the id, so duplicates are dropped by BullMQ. */
   recallEvent: (webhookId: string) => `recall-${webhookId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100)}`,
+  heldPush: (notificationId: string) => `held-push-${notificationId}`,
+  /** One bundle per user and release time (end of quiet hours, or the next hour for the push budget). */
+  pushBundle: (userId: string, releaseAtMs: number) => `push-bundle-${userId}-${releaseAtMs}`,
+  emailSync: (accountId: string) => `email-sync-${accountId}`,
+  emailBundle: (userId: string, hourKey: string) => `email-bundle-${userId}-${hourKey}`,
+  toolTaskRetry: (taskId: string, attempt: number) => `tool-task-${taskId}-${attempt}`,
 };
 
 const SEVEN_DAYS = 7 * 24 * 3600;
@@ -67,6 +88,7 @@ export const QUEUE_DEFAULTS: Record<QueueNameValue, DefaultJobOptions> = {
   // A finished call's transcript can take minutes to be ready: 8 attempts ≈ one hour of backoff.
   [QUEUE.BOT_EVENTS]: { ...base, attempts: 8, backoff: { type: 'exponential', delay: 30_000 } },
   [QUEUE.COMPANION]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 30_000 } },
+  [QUEUE.INTEGRATIONS]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 30_000 } },
 };
 
 // ---- job payloads ----
@@ -122,4 +144,29 @@ export interface MeetingPromptJob {
 }
 export interface BroadcastJob {
   broadcastId: string;
+}
+/** A critical push held by quiet hours / focus mode (the in-app row, if any, was written already). */
+export interface HeldPushJob {
+  userId: string;
+  notificationId: string | null;
+  type: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  categoryId?: string;
+}
+export interface PushBundleJob {
+  userId: string;
+  /** Redis counter holding how many pushes were held back. */
+  counterKey: string;
+}
+export interface EmailSyncJob {
+  accountId: string;
+}
+export interface EmailBundleJob {
+  userId: string;
+  hourKey: string;
+}
+export interface ToolTaskRetryJob {
+  taskId: string;
 }

@@ -65,6 +65,20 @@ export class RemindersRepository {
     return this.prisma.reminder.create({ data, include: REMINDER_INCLUDE });
   }
 
+  /** Pending user / AI reminders within ±`windowMs` of a time (duplicate check). */
+  pendingNear(userId: string, at: Date, windowMs: number): Promise<ReminderWithMeeting[]> {
+    return this.prisma.reminder.findMany({
+      where: {
+        userId,
+        status: 'pending',
+        type: { in: ['custom', 'commitment', 'action_item_due'] },
+        remindAt: { gte: new Date(at.getTime() - windowMs), lte: new Date(at.getTime() + windowMs) },
+      },
+      include: REMINDER_INCLUDE,
+      take: 20,
+    });
+  }
+
   update(id: string, data: Prisma.ReminderUncheckedUpdateInput): Promise<ReminderWithMeeting> {
     return this.prisma.reminder.update({ where: { id }, data, include: REMINDER_INCLUDE });
   }

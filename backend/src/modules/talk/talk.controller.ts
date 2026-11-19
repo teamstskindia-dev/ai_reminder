@@ -8,11 +8,15 @@ import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import {
   TalkActionRefDto,
   TalkActionStatusDto,
+  TalkEmailSent,
   TalkMessage,
+  TalkNoteDto,
   TalkReply,
   TalkScheduled,
   TalkScheduleDto,
   TalkSendDto,
+  TalkSendEmailDto,
+  TalkTaskDto,
   TalkThread,
 } from './talk.dto';
 import { TalkService } from './talk.service';
@@ -61,6 +65,44 @@ export class TalkController {
   @ApiErrors('NOT_FOUND', 'CONFLICT')
   actionStatus(@CurrentUserId() userId: string, @Body() dto: TalkActionStatusDto) {
     return this.talk.setActionStatus(userId, dto.messageId, dto.actionId, dto.status);
+  }
+
+  @Post('actions/email')
+  @HttpCode(200)
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Send an approved email from the connected account',
+    description:
+      'Only after the user approved the draft. Sends from their own Gmail / Outlook (threaded when `replyToEmailId` ' +
+      'is set). Fails with CONFLICT when no account can send (read-only, not connected or needs a reconnect).',
+  })
+  @ApiDataResponse(TalkEmailSent)
+  @ApiErrors('NOT_FOUND', 'CONFLICT')
+  async sendEmail(@CurrentUserId() userId: string, @Body() dto: TalkSendEmailDto) {
+    return { message: await this.talk.sendEmail(userId, dto) };
+  }
+
+  @Post('actions/task')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Send a prepared task to its tool',
+    description:
+      '`send` creates it; after a duplicate warning, `merge` links to the existing task and `new` creates anyway.',
+  })
+  @ApiDataResponse(TalkMessage)
+  @ApiErrors('NOT_FOUND', 'CONFLICT')
+  sendTask(@CurrentUserId() userId: string, @Body() dto: TalkTaskDto) {
+    return this.talk.sendTask(userId, dto.messageId, dto.actionId, dto.mode);
+  }
+
+  @Post('actions/note')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Save an approved note to Notion' })
+  @ApiDataResponse(TalkMessage)
+  @ApiErrors('NOT_FOUND', 'CONFLICT')
+  saveNote(@CurrentUserId() userId: string, @Body() dto: TalkNoteDto) {
+    return this.talk.saveNote(userId, dto.messageId, dto.actionId, { title: dto.title, body: dto.body });
   }
 
   @Post('actions/retry')

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DeliveryService } from '../notifications/delivery.service';
+import { nudgesPaused } from '../notifications/notification-policy';
 import { CompanionContextService } from './companion-context.service';
 import { dayHeadline, morningPush } from './companion.copy';
 
@@ -13,7 +14,7 @@ export class MorningBriefService {
 
   async send(userId: string, day: string): Promise<'sent' | 'skipped'> {
     const user = await this.context.user(userId);
-    if (!user || !user.settings.morningBrief) return 'skipped';
+    if (!user || !user.settings.morningBrief || nudgesPaused(user.settings)) return 'skipped';
     const facts = await this.context.day(userId, user.timezone, day);
     const push = morningPush(user.lang, user.name, dayHeadline(user.lang, facts));
     await this.delivery.deliver({

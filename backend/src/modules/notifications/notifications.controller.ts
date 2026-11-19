@@ -33,6 +33,20 @@ export class NotificationsController {
     return this.notifications.markRead(userId, id);
   }
 
+  @Post(':id/opened')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'The user opened a push',
+    description:
+      'Call when a push notification is tapped (`data.notificationId`). Marks it read and teaches the friend ' +
+      'which times of day the user answers pushes, so proactive nudges move to those times.',
+  })
+  @ApiDataResponse(AppNotification)
+  @ApiErrors('NOT_FOUND')
+  opened(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.notifications.opened(userId, id);
+  }
+
   @Post('read-all')
   @HttpCode(200)
   @ApiOperation({ summary: 'Mark all notifications as read' })

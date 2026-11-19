@@ -6,8 +6,11 @@ import {
   fetchTalkMessages,
   fetchTalkThreads,
   retryTalkAction,
+  saveTalkNote,
   scheduleMeeting,
   sendTalk,
+  sendTalkEmail,
+  sendTalkTask,
   setTalkActionStatus,
   type ScheduleInput,
   type TalkSendInput,
@@ -40,6 +43,9 @@ export function useSendTalk() {
         void qc.invalidateQueries({ queryKey: qk.reminders.all });
         void qc.invalidateQueries({ queryKey: qk.actionItems.all });
         void qc.invalidateQueries({ queryKey: qk.today });
+        // "Take a break" changes the settings; a task may have gone to a tool.
+        if (res.reply.actions.some((a) => a.type === 'pause')) void qc.invalidateQueries({ queryKey: qk.me });
+        if (res.reply.actions.some((a) => a.type === 'task')) void qc.invalidateQueries({ queryKey: qk.toolTasks.all });
       }
     },
   });
@@ -71,6 +77,39 @@ export function useTalkActionStatus(threadId: string | null) {
   const replace = useReplaceMessage();
   return useMutation({
     mutationFn: (input: { messageId: string; actionId: string; status: 'sent' | 'cancelled' }) => setTalkActionStatus(input),
+    onSuccess: (message) => replace(threadId, message),
+  });
+}
+
+export function useSendTalkEmail(threadId: string | null) {
+  const replace = useReplaceMessage();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof sendTalkEmail>[0]) => sendTalkEmail(input),
+    onSuccess: (res) => {
+      replace(threadId, res.message);
+      void qc.invalidateQueries({ queryKey: qk.emails.all });
+    },
+  });
+}
+
+export function useSendTalkTask(threadId: string | null) {
+  const replace = useReplaceMessage();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { messageId: string; actionId: string; mode: 'send' | 'merge' | 'new' }) => sendTalkTask(input),
+    onSuccess: (message) => {
+      replace(threadId, message);
+      void qc.invalidateQueries({ queryKey: qk.actionItems.all });
+      void qc.invalidateQueries({ queryKey: qk.toolTasks.all });
+    },
+  });
+}
+
+export function useSaveTalkNote(threadId: string | null) {
+  const replace = useReplaceMessage();
+  return useMutation({
+    mutationFn: (input: { messageId: string; actionId: string; title: string; body: string }) => saveTalkNote(input),
     onSuccess: (message) => replace(threadId, message),
   });
 }

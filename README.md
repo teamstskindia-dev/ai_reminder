@@ -66,3 +66,6 @@ Pull requests run typecheck, lint, tests and builds for the changed apps. Setup,
 | Admin media uploads             | Real Cloudinary keys (dev uses the public `demo` cloud; pasting URLs always works) |
 | Push notifications              | EAS project + APNs (iOS) / FCM v1 (Android) credentials, development build |
 | Email (welcome email, digests, email sign-in codes) | SMTP settings + `notifications.emailEnabled` in the admin panel. Without SMTP in development, email sign-in codes are printed in the API log. |
+| Reading Gmail (user-flow §07)   | Gmail API enabled in the same Google Cloud project, redirect URI `…/api/v1/integrations/oauth/callback` added to the OAuth client, scopes `gmail.readonly` + `gmail.send` on the consent screen (restricted scopes: Google verification before public launch) |
+| Reading Outlook                 | Microsoft Entra app (`MICROSOFT_CLIENT_ID/SECRET`), delegated `Mail.Read Mail.Send User.Read offline_access`, same redirect URI |
+| Notion / Jira / Linear / Todoist (§08) | One OAuth app each (`NOTION_*`, `ATLASSIAN_*`, `LINEAR_*`, `TODOIST_*`), redirect URI `…/api/v1/integrations/oauth/callback`. A provider without keys shows "Coming soon" in the app |

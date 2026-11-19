@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ArrowUp, AudioLines, Eye, EyeOff, HeartHandshake, History, MessageCirclePlus, Mic, Phone, Video } from 'lucide-react-native';
+import { ArrowUp, AudioLines, HatGlasses, HeartHandshake, History, MessageCirclePlus, Mic, Phone, Video } from 'lucide-react-native';
 import { memo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -276,7 +276,7 @@ export function TalkScreen() {
   const empty = (
     <ScrollView contentContainerStyle={styles.empty} keyboardShouldPersistTaps="handled">
       <View style={[styles.heroIcon, { backgroundColor: incognito ? theme.colors.surfaceMuted : theme.colors.primarySoft }]}>
-        {incognito ? <EyeOff size={28} color={theme.colors.textSecondary} /> : <HeartHandshake size={28} color={theme.colors.primaryText} />}
+        {incognito ? <HatGlasses size={28} color={theme.colors.textSecondary} /> : <HeartHandshake size={28} color={theme.colors.primaryText} />}
       </View>
       <Text variant="title" align="center">
         {incognito
@@ -309,7 +309,12 @@ export function TalkScreen() {
         title={title}
         right={
           <>
-            <IconButton icon={incognito ? EyeOff : Eye} accessibilityLabel={incognito ? 'Turn incognito off' : 'Turn incognito on'} onPress={toggleIncognito} color={incognito ? theme.colors.primaryText : undefined} />
+            <IconButton
+              icon={HatGlasses}
+              variant={incognito ? 'filled' : 'plain'}
+              accessibilityLabel={incognito ? 'Turn incognito off' : 'Turn incognito on'}
+              onPress={toggleIncognito}
+            />
             {items.length ? <IconButton icon={MessageCirclePlus} accessibilityLabel="New conversation" onPress={newChat} /> : null}
             {!incognito ? <IconButton icon={History} accessibilityLabel="Past conversations" onPress={() => setHistoryOpen(true)} /> : null}
           </>
@@ -317,7 +322,7 @@ export function TalkScreen() {
       />
       {incognito ? (
         <View style={[styles.incognitoBar, { backgroundColor: theme.colors.surfaceMuted }]}>
-          <EyeOff size={14} color={theme.colors.textSecondary} />
+          <HatGlasses size={14} color={theme.colors.textSecondary} />
           <Text variant="caption" tone="secondary">{pick(lang, 'Incognito: not saved, not learned', 'Incognito: na save, na yaad')}</Text>
         </View>
       ) : null}

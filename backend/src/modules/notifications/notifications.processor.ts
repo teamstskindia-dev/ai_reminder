@@ -6,9 +6,11 @@ import { BaseProcessor, PermanentJobError } from '../../infra/queue/base.process
 import { upsertJob } from '../../infra/queue/job-utils';
 import {
   BroadcastJob,
+  HeldPushJob,
   JOB,
   JobId,
   NotifyJob,
+  PushBundleJob,
   QUEUE,
   ReminderFollowUpJob,
   ReminderJob,
@@ -18,7 +20,7 @@ import { DeliveryService } from './delivery.service';
 import { DigestService } from './digest.service';
 import { ReminderDispatchService } from './reminder-dispatch.service';
 
-type NotificationsJobData = ReminderJob | ReminderFollowUpJob | NotifyJob | BroadcastJob;
+type NotificationsJobData = ReminderJob | ReminderFollowUpJob | NotifyJob | BroadcastJob | HeldPushJob | PushBundleJob;
 
 /** `notifications` queue: delayed reminders (and their one follow-up), template notifications and broadcasts. */
 @Processor(QUEUE.NOTIFICATIONS)
@@ -55,6 +57,10 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJobData> 
       }
       case JOB.BROADCAST:
         return { sent: await this.broadcasts.dispatch((job.data as BroadcastJob).broadcastId) };
+      case JOB.HELD_PUSH:
+        return { outcome: await this.delivery.deliverHeld(job.data as HeldPushJob) };
+      case JOB.PUSH_BUNDLE:
+        return { outcome: await this.delivery.deliverBundle(job.data as PushBundleJob) };
       default:
         throw new PermanentJobError(`Unknown notifications job "${job.name}"`);
     }
