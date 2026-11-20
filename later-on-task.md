@@ -5,9 +5,9 @@ Kaam jo abhi skip kiya hai aur baad mein karna hai. Har task ke saath likha hai 
 | # | Task | Status | Kyun ruka |
 |---|------|--------|-----------|
 | 1 | Outlook (Microsoft Entra) | ⏸ Pending | Microsoft ki website: signup block, phir Entra par AADSTS16000 (personal account ki directory nahi) |
-| 2 | Notion | ⏸ Pending | Notion developer website: page poora load nahi hota, "Create connection" button disabled |
+| 2 | Notion | ✅ Keys set (2026-11-20) — app se connect + test baaki | Connection "Remi" ban gaya, `NOTION_CLIENT_ID/SECRET` `backend/.env` mein |
 
-Baaki connected apps ready hain (keys `backend/.env` mein): **Gmail, Jira, Linear, Todoist**.
+Baaki connected apps ready hain (keys `backend/.env` mein): **Gmail, Jira, Linear, Todoist, Notion**.
 
 ---
 
