@@ -31,7 +31,7 @@ const TAGS: [string, string][] = [
   ['health', 'Liveness and readiness probes (no envelope).'],
   ['public', 'Public config and CMS content for the website and the app. No auth.'],
   ['auth', 'Google sign-in (PKCE for mobile), Sign in with Apple, email sign-in codes, token refresh and logout.'],
-  ['me', 'The signed-in user profile, settings, personality profile and account deletion.'],
+  ['me', 'The signed-in user profile, settings, personality profile, data export and account deletion.'],
   ['onboarding', 'First-run get-to-know-you chat, voice answers, the first personality profile and finishing setup.'],
   [
     'integrations',
@@ -44,6 +44,10 @@ const TAGS: [string, string][] = [
   [
     'tools',
     'Notion, Jira, Linear and Todoist: send to-dos as tasks (duplicate check, retries), default projects and what is open.',
+  ],
+  [
+    'memory',
+    'Memory: the timeline by day, people cards, search by meaning, and fixing names, summaries and transcript lines.',
   ],
   ['dashboard', 'Home screen aggregate.'],
   [

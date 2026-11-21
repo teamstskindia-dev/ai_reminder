@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -7,7 +7,13 @@ import { ThrottleByUser } from '../../common/decorators/metadata.decorators';
 import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import { User } from '../users/dto/users.responses.dto';
-import { OnboardingChatDto, OnboardingChatReply, TranscriptionResult, UserProfile } from './onboarding.dto';
+import {
+  OnboardingChatDto,
+  OnboardingChatReply,
+  TranscriptionResult,
+  UpdateProfileDto,
+  UserProfile,
+} from './onboarding.dto';
 import { MAX_VOICE_NOTE_BYTES, OnboardingService } from './onboarding.service';
 
 @ApiTags('onboarding')
@@ -100,6 +106,18 @@ export class ProfileController {
   @ApiDataResponse(UserProfile)
   get(@CurrentUserId() userId: string) {
     return this.onboarding.getProfile(userId);
+  }
+
+  @Patch()
+  @ApiOperation({
+    summary: 'Edit or correct what the friend knows about you',
+    description:
+      'Any field can be corrected or cleared (null); `facts` replaces the whole list (edit or remove facts).',
+  })
+  @ApiDataResponse(UserProfile)
+  @ApiErrors('VALIDATION_ERROR')
+  update(@CurrentUserId() userId: string, @Body() dto: UpdateProfileDto) {
+    return this.onboarding.updateProfile(userId, dto);
   }
 
   @Delete()

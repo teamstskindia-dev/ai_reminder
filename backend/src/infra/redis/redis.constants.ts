@@ -17,6 +17,10 @@ export function redisOptionsFromUrl(url: string): RedisOptions {
 }
 
 export const RedisKeys = {
+  /** Data export (§10): the user's export status, and download token → file. */
+  dataExport: (userId: string) => `data-export:${userId}`,
+  dataExportToken: (token: string) => `data-export-token:${token}`,
+  peopleRebuilt: (userId: string) => `people-rebuilt:${userId}`,
   otc: (code: string) => `otc:${code}`,
   googlePkce: (nonce: string) => `oauth-pkce:${nonce}`,
   /** Keyed by sha256(email) so addresses never appear in key names. */

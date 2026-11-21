@@ -76,6 +76,7 @@ export class UsersService {
     if (dto.nudgesPausedUntil !== undefined) {
       data.nudgesPausedUntil = futureWithin(dto.nudgesPausedUntil, 30 * 24, 'nudgesPausedUntil');
     }
+    if (dto.learningPaused !== undefined) data.learningPaused = dto.learningPaused;
     const after = Object.keys(data).length ? await this.users.updateSettings(userId, data) : before;
     const reschedule =
       after.autoJoin !== before.autoJoin || after.meetingReminderMinutes !== before.meetingReminderMinutes;

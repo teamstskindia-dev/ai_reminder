@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsString, Length, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsString, Length, MaxLength, ValidateNested } from 'class-validator';
+import { IsOptionalNonNull, IsOptionalNullable } from '../../common/validation/validators';
 import { ApiDateTime, ApiInteger } from '../../common/swagger/api-docs.decorators';
 import type * as Contract from '../../common/types/api.types';
 
@@ -64,4 +65,47 @@ export class UserProfile implements Contract.UserProfile {
 export class TranscriptionResult {
   /** What the user said (Hindi words in Latin script). Empty when no speech was found. */
   text: string;
+}
+
+/** "What I know about you" (§10): edit, correct or delete any item. Omitted fields stay as they are. */
+export class UpdateProfileDto {
+  @IsOptionalNullable()
+  @IsString()
+  @Length(1, 80)
+  preferredName?: string | null;
+
+  @IsOptionalNullable()
+  @IsString()
+  @Length(1, 200)
+  occupation?: string | null;
+
+  @IsOptionalNullable()
+  @IsString()
+  @Length(1, 300)
+  currentFocus?: string | null;
+
+  /** How the user likes to be talked to. */
+  @IsOptionalNullable()
+  @IsString()
+  @Length(1, 200)
+  communicationStyle?: string | null;
+
+  /** The friend's tone with the user, e.g. "warm", "playful", "straight-talking", "calm". */
+  @IsOptionalNullable()
+  @IsString()
+  @Length(1, 40)
+  tone?: string | null;
+
+  @ApiProperty({ enum: ['english', 'hinglish', 'mixed'], required: false })
+  @IsOptionalNonNull()
+  @IsIn(['english', 'hinglish', 'mixed'])
+  languageStyle?: Contract.LanguageStyle;
+
+  /** The full list of facts (replaces the stored list). */
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  facts?: string[];
 }

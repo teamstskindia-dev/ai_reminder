@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AppConfig } from '../../config/app-config';
+import { ConnectionsModule } from '../connections/connections.module';
 import { UsersModule } from '../users/users.module';
 import { AdminsRepository } from './admins.repository';
 import { AuthCookiesService } from './auth-cookies.service';
@@ -14,7 +15,7 @@ import { RefreshSessionService } from './refresh-session.service';
 import { TokenService } from './token.service';
 
 @Module({
-  imports: [JwtModule.register({}), UsersModule],
+  imports: [JwtModule.register({}), UsersModule, ConnectionsModule],
   providers: [
     TokenService,
     AuthSessionsRepository,

@@ -11,6 +11,7 @@ import {
   Mic,
   Pencil,
   RotateCw,
+  Share2,
   Sparkles,
   Trash2,
   Users,
@@ -50,6 +51,8 @@ import { formatDayLabel, formatDuration, formatTime, formatTimestamp as formatCl
 import { haptics } from '@/utils/haptics';
 import { toast } from '@/utils/toast';
 import { SendAllToTool } from '@/features/tools/SendAllToTool';
+import { shareSummary, useConversationFixes } from '@/features/memory/conversationTools';
+import { undoable } from '@/utils/undo';
 
 import { EventLink, FollowUpCard } from './CaptureMeetingLink';
 
@@ -188,6 +191,7 @@ export function CaptureScreen({ id }: { id: string }) {
   const [renaming, setRenaming] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const transcript = useTranscript(id, showTranscript && capture?.status === 'completed');
+  const fixes = useConversationFixes(id);
 
   // Items are edited on other screens (to-do and reminder editors): refresh when coming back.
   useFocusEffect(
@@ -233,14 +237,14 @@ export function CaptureScreen({ id }: { id: string }) {
         {
           text: pick(lang, 'Delete', 'Delete karo'),
           style: 'destructive',
-          onPress: () =>
-            remove.mutate(id, {
-              onSuccess: () => {
-                toast(pick(lang, 'Recording deleted.', 'Recording delete ho gayi.'));
-                close();
-              },
+          onPress: () => {
+            close();
+            undoable({
+              message: pick(lang, 'Recording deleted', 'Recording delete ho gayi'),
+              commit: () => remove.mutateAsync(id),
               onError: (e) => toast(getErrorMessage(e)),
-            }),
+            });
+          },
         },
       ],
     );
@@ -285,7 +289,26 @@ export function CaptureScreen({ id }: { id: string }) {
       options={{
         title: '',
         headerRight: () =>
-          capture ? <IconButton icon={Trash2} accessibilityLabel="Delete recording" onPress={confirmDelete} /> : null,
+          capture ? (
+            <View style={styles.headerActions}>
+              {capture.status === 'completed' ? (
+                <IconButton
+                  icon={Share2}
+                  accessibilityLabel="Share summary"
+                  onPress={() =>
+                    void shareSummary({
+                      title: capture.title,
+                      at: capture.startAt,
+                      summary: capture.summary,
+                      keyPoints: capture.keyPoints,
+                      todos: capture.actionItems.map((a) => a.title),
+                    })
+                  }
+                />
+              ) : null}
+              <IconButton icon={Trash2} accessibilityLabel="Delete recording" onPress={confirmDelete} />
+            </View>
+          ) : null,
       }}
     />
   );
@@ -393,7 +416,11 @@ export function CaptureScreen({ id }: { id: string }) {
 
             {capture.summary ? (
               <View style={styles.section}>
-                <SectionHeader title={pick(lang, 'Summary', 'Summary')} />
+                <SectionHeader
+                  title={pick(lang, 'Summary', 'Summary')}
+                  actionLabel={pick(lang, 'Fix', 'Theek karo')}
+                  onAction={() => fixes.editSummary(capture.summary ?? '')}
+                />
                 <Card>
                   <View style={styles.cardBody}>
                     <Markdown>{capture.summary}</Markdown>
@@ -466,7 +493,13 @@ export function CaptureScreen({ id }: { id: string }) {
                 <Card>
                   <View style={styles.cardBody}>
                     {insights.people.map((p) => (
-                      <View key={p.name} style={styles.person}>
+                      <Touchable
+                        key={p.name}
+                        accessibilityRole="button"
+                        accessibilityHint="Fix this name"
+                        onPress={() => fixes.fixName(p.name)}
+                        style={styles.person}
+                      >
                         <View style={[styles.roundIcon, { backgroundColor: theme.colors.accentSoft }]}>
                           <Users size={16} color={theme.colors.accentText} />
                         </View>
@@ -481,7 +514,8 @@ export function CaptureScreen({ id }: { id: string }) {
                             </Text>
                           ))}
                         </View>
-                      </View>
+                        <Pencil size={14} color={theme.colors.textMuted} />
+                      </Touchable>
                     ))}
                   </View>
                 </Card>
@@ -555,14 +589,23 @@ export function CaptureScreen({ id }: { id: string }) {
                     {transcript.isPending ? (
                       <ActivityIndicator color={theme.colors.primary} />
                     ) : (
-                      (transcript.data ?? []).map((seg) => (
-                        <View key={seg.seq}>
-                          <Text variant="micro" tone="muted">
-                            {formatClock(seg.startMs)} · {seg.speaker}
-                          </Text>
-                          <Text variant="callout">{seg.text}</Text>
-                        </View>
-                      ))
+                      <>
+                        <Text variant="caption" tone="muted">
+                          {pick(lang, 'Tap a name to fix it, or a line to correct it.', 'Naam theek karne ke liye naam par, line ke liye line par tap karo.')}
+                        </Text>
+                        {(transcript.data ?? []).map((seg) => (
+                          <View key={seg.seq}>
+                            <Touchable accessibilityRole="button" accessibilityHint="Fix this name" onPress={() => fixes.fixName(seg.speaker)}>
+                              <Text variant="micro" tone="muted">
+                                {formatClock(seg.startMs)} · <Text variant="micro" tone="brand">{seg.speaker}</Text>
+                              </Text>
+                            </Touchable>
+                            <Touchable accessibilityRole="button" accessibilityHint="Fix this line" onPress={() => fixes.editLine(seg.seq, seg.text)}>
+                              <Text variant="callout">{seg.text}</Text>
+                            </Touchable>
+                          </View>
+                        ))}
+                      </>
                     )}
                   </View>
                 </Card>
@@ -599,6 +642,7 @@ export function CaptureScreen({ id }: { id: string }) {
           if (value.trim() && value.trim() !== capture.title) rename.mutate(value.trim(), { onError: (e) => toast(getErrorMessage(e)) });
         }}
       />
+      {fixes.dialogs}
       {actionItems.sheet}
       {reminderMenu.sheet}
     </View>
@@ -608,6 +652,10 @@ export function CaptureScreen({ id }: { id: string }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   content: {
     width: '100%',

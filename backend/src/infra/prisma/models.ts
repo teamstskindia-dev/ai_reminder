@@ -28,6 +28,7 @@ export type {
   NavigationItem as NavigationItemRow,
   Notification as NotificationRow,
   NotificationTemplate as NotificationTemplateRow,
+  Person as PersonRow,
   Plan as PlanRow,
   Reminder as ReminderRow,
   ToolTask as ToolTaskRow,

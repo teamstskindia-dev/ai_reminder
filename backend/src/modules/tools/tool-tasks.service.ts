@@ -424,6 +424,24 @@ export class ToolTasksService {
     return { provider: p, items };
   }
 
+  /** "What is pending?" without naming a tool: every connected tool (one that fails is reported, not fatal). */
+  async listAllMine(userId: string): Promise<{ provider: ToolProvider; items: ToolItem[]; failed: boolean }[]> {
+    const accounts = await this.connections.toolAccounts(userId);
+    if (!accounts.length)
+      throw AppException.conflict('Connect Notion, Jira, Linear or Todoist in Connected apps first.');
+    return Promise.all(
+      accounts.map(async (account) => {
+        const provider = account.provider as ToolProvider;
+        try {
+          return { ...(await this.listMine(userId, provider)), failed: false };
+        } catch (err) {
+          this.logger.warn({ provider, causes: causeChain(err) }, 'listing open tasks failed');
+          return { provider, items: [] as ToolItem[], failed: true };
+        }
+      }),
+    );
+  }
+
   /** "Save this summary to Notion": a page in the default Notion database. */
   async saveNote(userId: string, title: string, body: string): Promise<{ url: string | null }> {
     const account = await this.connections.requireAccount(userId, 'notion');

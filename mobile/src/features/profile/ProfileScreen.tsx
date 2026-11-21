@@ -27,9 +27,11 @@ import { toast } from '@/utils/toast';
 
 import { AboutYou, DailyRhythmSettings } from './AboutYou';
 import { ConnectedAppsRow } from './ConnectedAppsRow';
+import { MoodInsightsCard } from './MoodInsightsCard';
 import { NotetakerSettings } from './NotetakerSettings';
 import { NotificationSettings } from './NotificationSettings';
 import { NotifyRulesSettings } from './NotifyRulesSettings';
+import { PrivacySettings } from './PrivacySettings';
 
 const DEFAULT_PAGES = [
   { slug: 'about', label: 'About' },
@@ -58,7 +60,7 @@ function pageIcon(slug: string): LucideIcon {
 export function ProfileScreen() {
   const theme = useTheme();
   const { config } = useConfig();
-  const title = useTabLabel('profile', 'Profile');
+  const title = useTabLabel('profile', 'You');
   const { signOut } = useAuth();
   const me = useMeQuery();
   const updateSettings = useUpdateSettings();
@@ -93,7 +95,7 @@ export function ProfileScreen() {
   const confirmDelete = () =>
     Alert.alert(
       'Delete your account?',
-      `This permanently deletes your meetings, transcripts, reports and reminders, and disconnects Google. This can't be undone.`,
+      `This erases everything I remember: conversations, transcripts, reminders, people and what I know about you, and disconnects Google. You'll get an email confirming it. This can't be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -140,11 +142,13 @@ export function ProfileScreen() {
             </Card>
 
             <AboutYou />
+            <MoodInsightsCard />
             <DailyRhythmSettings settings={settings} onChange={onChange} />
             <NotetakerSettings settings={settings} onChange={onChange} />
             <NotificationSettings settings={settings} onChange={onChange} />
             <NotifyRulesSettings settings={settings} onChange={onChange} />
             <ConnectedAppsRow />
+            <PrivacySettings settings={settings} onChange={onChange} />
 
             <ListGroup title="About">
               {legalPages(config.navigation.footer).map((page) => (

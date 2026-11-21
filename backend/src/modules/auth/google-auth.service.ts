@@ -13,11 +13,13 @@ import { QUEUE } from '../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import type { UserRow } from '../../infra/prisma/models';
 import { enqueueUserSync } from '../calendar/sync-producer';
+import { ConnectionsService } from '../connections/connections.service';
 import { SettingsService } from '../content/settings.service';
 import { GoogleAccountsRepository, UsersRepository } from '../users/users.repository';
 import { CODE_CHALLENGE_RE, verifyPkce } from './pkce';
 import { isAllowedRedirect } from './redirect-allowlist';
 import { TokenService } from './token.service';
+import { withQuery } from './with-query';
 
 export type SignInErrorCode = 'access_denied' | 'account_suspended' | 'signups_disabled' | 'oauth_failed';
 
@@ -55,6 +57,7 @@ export class GoogleAuthService {
     private readonly users: UsersRepository,
     private readonly googleAccounts: GoogleAccountsRepository,
     private readonly settings: SettingsService,
+    private readonly connections: ConnectionsService,
     @Inject(REDIS) private readonly redis: Redis,
     @InjectQueue(QUEUE.CALENDAR_SYNC) private readonly syncQueue: Queue,
   ) {}
@@ -200,22 +203,22 @@ export class GoogleAuthService {
     };
     await this.googleAccounts.upsert(user.id, fields, fields);
 
+    // Gmail granted on this sign-in: connect it now (a failure never blocks signing in).
+    await this.connections
+      .linkGmailFromSignIn(user.id, {
+        email: profile.email,
+        accessToken: tokens.access_token ?? null,
+        refreshToken: tokens.refresh_token ?? null,
+        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        scope,
+      })
+      .catch((err: unknown) => this.logger.warn({ causes: causeChain(err) }, 'Could not connect Gmail from sign-in'));
+
     if (calendarConnected && (tokens.refresh_token || existing?.refreshTokenEnc)) {
       await enqueueUserSync(this.syncQueue, user.id, 'login').catch((err: Error) =>
         this.logger.warn(`Could not enqueue initial sync: ${err.message}`),
       );
     }
     return { user, isNewUser };
-  }
-}
-
-export function withQuery(target: string, params: Record<string, string>): string {
-  try {
-    const url = new URL(target);
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    return url.toString();
-  } catch {
-    const qs = new URLSearchParams(params).toString();
-    return `${target}${target.includes('?') ? '&' : '?'}${qs}`;
   }
 }

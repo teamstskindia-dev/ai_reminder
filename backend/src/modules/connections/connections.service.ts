@@ -8,13 +8,14 @@ import { AppException, causeChain } from '../../common/errors/app.exception';
 import { securityLog } from '../../common/logging/security-log';
 import type { ConnectedProvider, Integration, IntegrationSettings, ToolProvider } from '../../common/types/api.types';
 import { decryptString, encryptString, randomToken } from '../../common/utils/crypto.util';
+import { hasGmailScope } from '../../infra/google/google-oauth.service';
 import type { ConnectedAccountRow, GoogleAccountRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { upsertJob } from '../../infra/queue/job-utils';
 import { EmailSyncJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
-import { withQuery } from '../auth/google-auth.service';
+import { withQuery } from '../auth/with-query';
 import { isAllowedRedirect } from '../auth/redirect-allowlist';
 import { NotificationProducer } from '../notifications/notification-producer.service';
 import { toIntegration } from '../users/users.mapper';
@@ -24,13 +25,13 @@ import {
   CONNECTED_PROVIDERS,
   type ConnectMode,
   exchangeCode,
+  GMAIL_SEND_SCOPE,
   identify,
   isConnectedProvider,
   isEmailProvider,
   type OAuthClient,
   PROVIDER_NAME,
   refreshToken,
-  revokeToken,
   supportsPkce,
 } from './oauth-providers';
 import { ProviderHttpError } from './provider-http';
@@ -276,16 +277,53 @@ export class ConnectionsService {
     if (!isConnectedProvider(provider)) throw AppException.notFound('Integration');
     const row = await this.findAccount(userId, provider);
     if (!row) return;
-    const token = row.refreshTokenEnc ?? row.accessTokenEnc;
-    if (token) {
-      try {
-        await revokeToken(provider, decryptString(token, this.config.encryptionKey));
-      } catch {
-        this.logger.warn({ provider }, 'token revocation failed (ignored)');
-      }
-    }
-    // Emails go with the account; tasks already in a tool stay in the app as plain to-dos.
+    // Tokens are dropped, not revoked at the provider: Gmail shares the Google sign-in grant, and revoking it
+    // would also cut Calendar and sign-in. Emails go with the account; tasks already in a tool stay as to-dos.
     await this.prisma.connectedAccount.delete({ where: { id: row.id } });
+  }
+
+  /**
+   * Gmail asked on the Google sign-in (user-flow §07): when the user granted it there, Gmail is connected with
+   * the same tokens, so a new user does not connect it again. An existing connection is never replaced; one
+   * that lost access is refreshed only when it is the same mailbox.
+   */
+  async linkGmailFromSignIn(
+    userId: string,
+    p: {
+      email: string;
+      accessToken: string | null;
+      refreshToken: string | null;
+      expiresAt: Date | null;
+      scope: string;
+    },
+  ): Promise<void> {
+    if (!this.available('gmail') || !hasGmailScope(p.scope) || !p.accessToken || !p.refreshToken) return;
+    const email = p.email.toLowerCase();
+    const existing = await this.findAccount(userId, 'gmail');
+    if (existing && (existing.status === 'connected' || existing.externalAccountId?.toLowerCase() !== email)) return;
+    const key = this.config.encryptionKey;
+    const data = {
+      kind: 'email',
+      accountLabel: email.slice(0, 200),
+      externalAccountId: email,
+      accessTokenEnc: encryptString(p.accessToken, key),
+      refreshTokenEnc: encryptString(p.refreshToken, key),
+      tokenExpiresAt: p.expiresAt,
+      scope: p.scope,
+      status: 'connected',
+      lastError: null,
+      settings: {
+        ...accountSettings(existing),
+        canSend: p.scope.split(' ').includes(GMAIL_SEND_SCOPE),
+      } as Prisma.InputJsonValue,
+    };
+    const row = await this.prisma.connectedAccount.upsert({
+      where: { userId_provider: { userId, provider: 'gmail' } },
+      create: { userId, provider: 'gmail', ...data },
+      update: data,
+    });
+    await this.enqueueEmailSync(row.id);
+    this.logger.log({ userId, provider: 'gmail' }, 'Gmail connected from Google sign-in');
   }
 
   async updateSettings(

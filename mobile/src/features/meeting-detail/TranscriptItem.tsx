@@ -43,19 +43,43 @@ function Highlighted({ text, query }: { text: string; query: string }) {
   );
 }
 
-function TranscriptItemBase({ segment, query }: { segment: TranscriptSegment; query: string }) {
+function TranscriptItemBase({
+  segment,
+  query,
+  onSpeakerPress,
+  onTextPress,
+}: {
+  segment: TranscriptSegment;
+  query: string;
+  /** Fix this name (user-flow §10). */
+  onSpeakerPress?: (speaker: string) => void;
+  /** Fix this line. */
+  onTextPress?: (seq: number, text: string) => void;
+}) {
   const theme = useTheme();
   return (
     <View style={styles.row}>
       <View style={styles.head}>
-        <Text variant="label" color={speakerColor(theme, segment.speaker)} numberOfLines={1} style={styles.speaker}>
+        <Text
+          variant="label"
+          color={speakerColor(theme, segment.speaker)}
+          numberOfLines={1}
+          style={styles.speaker}
+          onPress={onSpeakerPress ? () => onSpeakerPress(segment.speaker) : undefined}
+          accessibilityRole={onSpeakerPress ? 'button' : undefined}
+          accessibilityHint={onSpeakerPress ? 'Fix this name' : undefined}
+        >
           {segment.speaker}
         </Text>
         <Text variant="caption" tone="muted">
           {formatTimestamp(segment.startMs)}
         </Text>
       </View>
-      <Text variant="body">
+      <Text
+        variant="body"
+        onPress={onTextPress ? () => onTextPress(segment.seq, segment.text) : undefined}
+        accessibilityHint={onTextPress ? 'Fix this line' : undefined}
+      >
         <Highlighted text={segment.text} query={query} />
       </Text>
     </View>

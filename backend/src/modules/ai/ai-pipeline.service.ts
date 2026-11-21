@@ -13,6 +13,8 @@ import { NotificationProducer } from '../notifications/notification-producer.ser
 import { ReminderSchedulerService } from '../reminders/reminder-scheduler.service';
 import { RemindersRepository } from '../reminders/reminders.repository';
 import { DEFAULT_REMINDER_CHANNELS, RemindersService } from '../reminders/reminders.service';
+import { NameFixService } from '../memory/name-fix.service';
+import { PeopleService } from '../memory/people.service';
 import { CaptureInsightsService, type InsightsResult } from './capture-insights.service';
 import { EmbeddingService } from './embedding.service';
 import { ReportGeneratorService } from './report-generator.service';
@@ -65,6 +67,8 @@ export class AiPipelineService {
     private readonly config: AppConfig,
     private readonly captureInsights: CaptureInsightsService,
     private readonly storage: StorageService,
+    private readonly nameFix: NameFixService,
+    private readonly people: PeopleService,
   ) {}
 
   async process(
@@ -90,6 +94,10 @@ export class AiPipelineService {
       await this.transcripts.replaceAll(meeting.id, transcribed);
     }
 
+    // Names the user fixed before ("Raul" → "Rahul") are applied first, so the summary uses them too (§10).
+    await this.nameFix
+      .correctTranscript(meeting.id, meeting.userId)
+      .catch((err: unknown) => this.logger.warn({ meetingId, causes: causeChain(err) }, 'name corrections failed'));
     const segments = await this.transcripts.listAll(meeting.id);
     if (!segments.length) throw new PermanentJobError('ai: the meeting has no transcript to process');
     const user = await this.prisma.user.findUnique({
@@ -161,6 +169,10 @@ export class AiPipelineService {
 
     const durationSeconds = meeting.durationSeconds ?? transcriptDurationSeconds(segments);
     await this.events.setStatus(meeting.id, 'completed', { durationSeconds, failureReason: null });
+    // People cards: everyone in this conversation (memory, §10).
+    await this.people
+      .syncMeeting(meeting.id)
+      .catch((err: unknown) => this.logger.warn({ meetingId, causes: causeChain(err) }, 'people cards not updated'));
 
     if (isCapture) {
       // Raw audio is not kept: only the transcript, summary and extracted items stay.
