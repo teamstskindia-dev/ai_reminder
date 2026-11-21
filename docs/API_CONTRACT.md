@@ -283,6 +283,7 @@ interface UserSettings {
   criticalBreakThrough: boolean;        // critical alerts may break through quiet hours / focus mode
   focusUntil: ISODate | null;           // focus mode (PATCH: at most 24 h ahead, null = off)
   nudgesPausedUntil: ISODate | null;    // "take a break" (PATCH: at most 30 days ahead, null = resume)
+  learningPaused: boolean;              // privacy (§10): memories are kept, nothing new is learned about the user
 }
 
 // The companion's personality profile, built by the first-run get-to-know-you chat.
@@ -439,7 +440,8 @@ type NotificationType =
   | 'daily_digest' | 'bot_failed' | 'broadcast' | 'welcome'
   | 'morning_brief' | 'evening_checkin' | 'reminder_followup' | 'companion_nudge' | 'weekly_recap'
   | 'capture_ready' | 'meeting_start' | 'meeting_notes'
-  | 'email_important' | 'email_bundle' | 'task_created' | 'reconnect_needed' | 'push_bundle';
+  | 'email_important' | 'email_bundle' | 'task_created' | 'reconnect_needed' | 'push_bundle'
+  | 'data_export_ready' | 'account_deleted';
 
 interface AppNotification {
   id: string;
@@ -765,13 +767,16 @@ Unknown keys must fall back to a generic icon.
 type IconKey =
   | 'home' | 'calendar' | 'meetings' | 'reports' | 'analytics' | 'action-items' | 'reminders'
   | 'ask-ai' | 'notifications' | 'settings' | 'profile' | 'help' | 'sparkles' | 'mic'
-  | 'shield' | 'zap' | 'clock' | 'search' | 'mail' | 'globe' | 'users' | 'file-text' | 'bell' | 'check';
+  | 'shield' | 'zap' | 'clock' | 'search' | 'mail' | 'globe' | 'users' | 'file-text' | 'bell' | 'check'
+  | 'memory';
 ```
 
 Web sidebar `href`s are app paths: `/dashboard`, `/analytics/reports`, `/analytics/overview`, `/calendar`,
 `/action-items`, `/reminders`, `/ask`, `/settings`.
-Mobile tab `href`s are expo-router tab names: `home`, `meetings`, `reminders`, `ask`, `profile`.
-The mobile app shows only tabs present in `navigation.mobile_tab` (in that order) and uses each `label`.
+Mobile tab `href`s are expo-router tab names: `home`, `meetings`, `reminders`, `ask`, `memory`, `profile`.
+The mobile app shows only tabs present in `navigation.mobile_tab` (in that order) and uses each `label`. The default
+set (user-flow §10) is Today (`home`), Talk (`ask`), Memory (`memory`) and You (`profile`); Meetings and Reminders stay
+reachable from Today and can be shown again from the admin panel.
 
 ---
 
@@ -825,7 +830,13 @@ After the first web login, the website redirects to `/analytics/reports?action=w
 | GET | `/me/settings` | — | `UserSettings` |
 | PATCH | `/me/settings` | `Partial<UserSettings>` without `recordingConsentAt`, plus `recordingConsentAcknowledged?: true` (stamps `recordingConsentAt` once). Times are `"HH:MM"` 24h. | `UserSettings` |
 | GET | `/me/profile` | — | `UserProfile` (`status: 'pending'` with empty fields until the chat runs) |
+| PATCH | `/me/profile` | `ProfilePatch`: any of `preferredName`, `occupation`, `currentFocus`, `communicationStyle`, `tone` (string or `null` to clear), `languageStyle`, `facts` (the whole list, max 50 × 200 chars) | `UserProfile` ("what I know about you": edit, correct or delete any item) |
 | DELETE | `/me/profile` | — | `204` (forgets the personality profile) |
+| GET | `/me/export` | — | `DataExportStatus` |
+| POST | `/me/export` | — | `DataExportStatus` (`preparing`). The worker builds one JSON file with everything the friend remembers (no tokens or secrets), emails `data_export_ready` with the link and adds it in-app. 3 per hour. |
+| GET | `/exports/:token` | Public | The export file (attachment, no envelope). The token is long and random; the link works for 3 days. |
+
+Deleting the account (`DELETE /me`) also removes a pending export and sends the `account_deleted` email after the data is gone.
 
 ### Onboarding (first run)
 
@@ -850,7 +861,7 @@ onboarding never blocks on the AI.
 | GET | `/integrations/:provider/connect?redirectUri=&mode=read\|send` | `{ url }`: consent URL for `gmail`, `outlook`, `notion`, `jira`, `linear`, `todoist` (`redirectUri` must be in the mobile allowlist; `mode` is for email only, default `send`) |
 | GET | `/integrations/oauth/callback` | Public. The provider redirects here; the API exchanges the code and redirects to `redirectUri?provider=…&status=connected` or `&error=access_denied\|connect_failed` |
 | PATCH | `/integrations/:provider` | `{ targetId?; targetName?; autoSend? }` (tools: default project / database and "send without asking") → `Integration` |
-| DELETE | `/integrations/:provider` | `204` (revokes where possible; emails read from it are deleted, tasks stay as to-dos) |
+| DELETE | `/integrations/:provider` | `204` (stored tokens are deleted; Gmail is not revoked at Google because it shares the sign-in grant; emails read from it are deleted, tasks stay as to-dos) |
 
 To reconnect Google Calendar, the client restarts the `/auth/google` flow. Connected apps keep their tokens encrypted (AES-256-GCM); an expired or revoked grant sets `status: 'needs_reconnect'` and sends one `reconnect_needed` notification a day (push + in-app, `data.url = '/connected-apps'`).
 
@@ -923,6 +934,7 @@ The app records in parts of about 5 minutes (a crash loses at most the current p
 ### Calendar and meetings (user-flow §06)
 
 - Google sign-in asks for `calendar.events` (read and write). Accounts connected earlier with `calendar.events.readonly` keep syncing; scheduling asks them to reconnect.
+- When Gmail is enabled, the same Google sign-in also asks for `gmail.readonly` and `gmail.send`. If the user grants them, Gmail is connected with those tokens (no separate connect step). An existing Gmail connection is never replaced. If the user unticks Gmail, they can connect it later from Connected apps.
 - Sync now keeps every timed event, including in-person ones without a video link (`platform: 'in_person'`, no `meetingUrl`); all-day events are skipped.
 - **Pre-meeting brief**: the `meeting_upcoming` push now goes `meetingReminderMinutes` before (default **30**) with a prep line (who is coming, a double-booking warning, and for back-to-back meetings the next one too, whose own brief is then folded into this one). It opens the meeting, which shows `GET /meetings/:id/prep`.
 - **Meeting starting: record it?** (`meeting_start`) at the start time, unless the notetaker bot joins or it is already being recorded; **Add quick notes?** (`meeting_notes`) 2 minutes after the end when nothing was recorded (not in quiet hours). Both carry `data.url` = `/capture/record?meetingId=…` (`&mode=notes`). Rescheduling moves them; cancelling removes them.
@@ -976,12 +988,61 @@ A fired reminder that is neither done nor snoozed gets **one** gentle follow-up 
 | POST | `/checkins/today/reply` | `{ text: string }` (1..1000; 20/min). The third reply wraps up automatically | `CheckinReply` |
 | POST | `/checkins/today/finish` | — (needs at least one reply) | `CheckinReply` |
 | GET | `/checkins/mood` | `days=7..90` (default 30) | `MoodPoint[]` (oldest first) |
+| GET | `/checkins/mood/insights` | — | `MoodInsights` (weekly patterns, trend, best and hardest weekday, what lifts and drains the user) |
 | GET | `/nudges/:id` | — | `CompanionNudge` |
 | POST | `/nudges/:id/reply` | `{ text: string }` | `NudgeReply` |
 | POST | `/nudges/:id/dismiss` | — | `204` |
 | GET | `/recaps` | `limit=1..12` (default 4) | `WeeklyRecap[]` (newest first) |
 
 The worker runs a 5-minute tick (`companion` queue) and, in each user's time zone: sends the **morning brief** at `wakeTime` (push + in-app, opens Today), the **evening check-in** at `checkinTime` (opens `/checkin`; lighter wording after a missed one), **night learning** at 03:00 (marks an unanswered check-in missed, updates warmth and `relationshipStage`, refreshes the profile summary, and may plan at most one **proactive nudge** for the day, never in quiet hours or within an hour of the check-in), and the **weekly recap** on Sunday at 18:00 (email + in-app, opens `/recap`). The daily digest is now email-only.
+
+### Memory, You and privacy (user-flow §10)
+
+| Method | Path | Query / Body | Response `data` |
+|--------|------|--------------|-----------------|
+| GET | `/memory/timeline` | `before?` (ISO, the previous page's `nextCursor`) | `MemoryTimeline`: conversations, recorded meetings, check-in highlights and email summaries (never promotions or phishing) grouped by local day |
+| GET | `/memory/search` | `q` (1..300; 30/min) | `MemorySearch`: by meaning (pgvector over conversations) plus word matches in check-ins and email summaries. No match → `results: []` and `related` (loosely related or recent memories) |
+| GET | `/memory/people` | `q?` | `PersonListItem[]` (most recently talked to first; built from past conversations on first visit) |
+| POST | `/memory/people` | `{ name; relationship?; facts? }` | `PersonDetail` (201; `409` if a card with that name exists) |
+| GET | `/memory/people/:id` | — | `PersonDetail` |
+| PATCH | `/memory/people/:id` | `{ name?; relationship?; facts? }` | `PersonDetail`. A new name is fixed in every conversation with them, remembered for future transcripts, and merges into an existing card with that name |
+| DELETE | `/memory/people/:id` | — | `204` (the card goes; conversations stay) |
+| POST | `/memory/conversations/:id/fix-name` | `{ from; to; onlyHere? }` | `NameFixResult`. A real name is fixed in every conversation that has it (speaker labels, transcript, summary, to-dos, reminders, people card) and saved as a correction applied to new transcripts before their summary is written; a label like "Speaker 2" only in this conversation |
+| PATCH | `/memory/conversations/:id/summary` | `{ summary }` | `{ summary }` |
+| PATCH | `/memory/conversations/:id/transcript/:seq` | `{ text }` | `{ seq; text }` |
+| GET | `/memory/corrections` | — | `NameCorrection[]` |
+| DELETE | `/memory/corrections` | `from` | `NameCorrection[]` (stops applying that fix to new transcripts) |
+
+`id` of a memory item opens `/capture/:id` (conversation), `/meeting/:id` (meeting) or `/email/:id` (email); check-ins
+show inline. People cards are updated after every processed conversation (speakers and the people the recording
+mentions, never the user). Promises both ways are open to-dos: **they promised you** = someone else's to-do assigned
+to the person; **you promised them** = your to-do that mentions them. With `learningPaused` the friend keeps memories,
+people cards and reminders but adds no facts from chats or check-ins, keeps warmth, the profile summary and mood
+insights as they are, and stops learning push timing; facts the user ticks in a review are still saved. Deletes in the
+app wait a few seconds with an Undo bar before calling the API.
+
+```ts
+type MemoryKind = 'conversation' | 'meeting' | 'checkin' | 'email';
+interface MemoryItem { kind: MemoryKind; id: string; title: string; snippet: string | null; at: ISODate;
+  mood: number | null /* 1..5 */; people: string[]; }
+interface MemoryDay { date: string /* local YYYY-MM-DD */; items: MemoryItem[]; }
+interface MemoryTimeline { days: MemoryDay[]; nextCursor: ISODate | null; }
+interface MemorySearchResult { item: MemoryItem; quote: string | null; similarity: number | null; }
+interface MemorySearch { query: string; results: MemorySearchResult[]; related: MemoryItem[]; }
+interface PersonListItem { id: string; name: string; relationship: string | null; lastTalkedAt: ISODate | null;
+  conversationCount: number; openPromises: number; }
+interface PersonPromise { id: string; title: string; dueAt: ISODate | null; status: string; }
+interface PersonDetail extends PersonListItem { facts: string[]; aliases: string[];
+  promises: { iOwe: PersonPromise[]; theyOwe: PersonPromise[] }; conversations: MemoryItem[]; }
+interface NameCorrection { from: string; to: string; }
+interface NameFixResult { conversations: number; remembered: boolean; }
+interface MoodInsights { days: MoodPoint[] /* 28 */; weekdays: { weekday: number /* 0 Sun */; mood: number | null;
+  energy: number | null }[]; averageMood: number | null; averageEnergy: number | null;
+  trend: 'up' | 'down' | 'flat' | null; bestDay: number | null; hardestDay: number | null;
+  lifts: string[]; drains: string[]; note: string | null; checkins: number; updatedAt: ISODate | null; }
+interface DataExportStatus { status: 'none' | 'preparing' | 'ready'; url: string | null;
+  requestedAt: ISODate | null; expiresAt: ISODate | null; }
+```
 
 ### Notifications
 

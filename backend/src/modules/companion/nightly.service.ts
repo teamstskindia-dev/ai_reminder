@@ -9,6 +9,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PromptsRepository } from '../ai/prompts.repository';
 import { SettingsService } from '../content/settings.service';
 import { CompanionContextService, type CompanionUser, type DayFacts } from './companion-context.service';
+import { MoodInsightsService } from './mood-insights.service';
 import { NudgeService } from './nudge.service';
 import { addDays, atLocalTime, dateOnly, nextWarmth, stageFor, type CheckinOutcome } from './rhythm.util';
 
@@ -43,7 +44,8 @@ const learningSchema = z.object({
 /**
  * Night learning (user-flow §03), around 03:00 local: closes yesterday's unanswered check-in as missed,
  * grows (or gently lowers) relationship warmth, refreshes the profile summary and decides whether a
- * proactive nudge is worth sending today. The AI part is optional; warmth always updates.
+ * proactive nudge is worth sending today, and about once a week what lifts and drains the user. The AI part
+ * is optional; warmth always updates unless the user paused learning.
  */
 @Injectable()
 export class NightlyService {
@@ -56,6 +58,7 @@ export class NightlyService {
     private readonly gemini: GeminiService,
     private readonly prompts: PromptsRepository,
     private readonly settings: SettingsService,
+    private readonly moodInsights: MoodInsightsService,
   ) {}
 
   /** `day` is the user's local "today" (the night that just passed belongs to yesterday). */
@@ -82,18 +85,23 @@ export class NightlyService {
       this.context.day(userId, user.timezone, day),
       this.wasActive(userId, user.timezone, yesterday),
     ]);
-    const warmth = nextWarmth(user.profile?.warmth ?? 0, outcome, active);
-    await this.prisma.userProfile.upsert({
-      where: { userId },
-      create: { userId, status: 'skipped', warmth, relationshipStage: stageFor(warmth), learnedAt: new Date() },
-      update: { warmth, relationshipStage: stageFor(warmth), learnedAt: new Date() },
-    });
+    // Learning paused (§10): warmth, the profile summary and mood insights stay as they are.
+    const paused = user.settings.learningPaused;
+    const warmth = paused ? (user.profile?.warmth ?? 0) : nextWarmth(user.profile?.warmth ?? 0, outcome, active);
+    if (!paused) {
+      await this.prisma.userProfile.upsert({
+        where: { userId },
+        create: { userId, status: 'skipped', warmth, relationshipStage: stageFor(warmth), learnedAt: new Date() },
+        update: { warmth, relationshipStage: stageFor(warmth), learnedAt: new Date() },
+      });
+      await this.moodInsights.refreshIfStale(user, day);
+    }
 
     let nudge = false;
     const worthThinking = !!checkin?.summary || yFacts.meetings > 0 || tFacts.meetings > 0;
     if (!this.gemini.isMock && worthThinking) {
       const learned = await this.learn(user, checkin?.summary ?? null, checkin?.mood ?? null, yFacts, tFacts);
-      if (learned?.summary) {
+      if (learned?.summary && !paused) {
         await this.prisma.userProfile.update({ where: { userId }, data: { summary: learned.summary } });
       }
       if (learned?.nudge?.text && user.settings.pushNotifications) {

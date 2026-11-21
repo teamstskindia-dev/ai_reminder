@@ -18,6 +18,7 @@ import { DigestProcessor, NotificationsProcessor } from './modules/notifications
 import { EmailModule } from './modules/email/email.module';
 import { IntegrationsProcessor } from './modules/integrations/integrations.processor';
 import { ToolsModule } from './modules/tools/tools.module';
+import { MemoryModule } from './modules/memory/memory.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReminderDispatchService } from './modules/notifications/reminder-dispatch.service';
 import { RemindersModule } from './modules/reminders/reminders.module';
@@ -39,6 +40,7 @@ import { UsersModule } from './modules/users/users.module';
     CompanionModule,
     EmailModule,
     ToolsModule,
+    MemoryModule,
   ],
   providers: [
     RepeatableJobsService,

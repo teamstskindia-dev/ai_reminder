@@ -86,6 +86,7 @@ model User {
   connectedAccounts ConnectedAccount[]
   emailMessages     EmailMessage[]
   toolTasks         ToolTask[]
+  people            Person[]
 
   @@index([createdAt(sort: Desc)], map: "users_created_at_idx")
   @@map("users")
@@ -123,6 +124,8 @@ model UserSettings {
   nudgesPausedUntil      DateTime? @map("nudges_paused_until") @db.Timestamptz(6)
   /// Per local hour "0".."23": [pushes sent, pushes opened]; the friend learns which times work.
   pushEngagement         Json      @default("{}") @map("push_engagement")
+  /// Privacy (§10): keep memories but learn nothing new about the user (facts, summary, warmth, mood, timing).
+  learningPaused         Boolean   @default(false) @map("learning_paused")
   updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -146,6 +149,10 @@ model UserProfile {
   warmth             Int       @default(0)
   relationshipStage  Int       @default(1) @map("relationship_stage") @db.SmallInt
   learnedAt          DateTime? @map("learned_at") @db.Timestamptz(6)
+  /// Names the user fixed once [{ from, to }], applied to every future transcript (§10).
+  corrections        Json      @default("[]")
+  /// Weekly mood and energy insights { lifts, drains, note, updatedAt } (night learning).
+  moodInsights       Json?     @map("mood_insights")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -619,6 +626,26 @@ model ToolTask {
 // -----------------------------------------------------------------------------
 // Ask AI
 // -----------------------------------------------------------------------------
+/// Memory (§10): one card per person the user talks about or meets.
+model Person {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  name              String
+  relationship      String?
+  facts             Json      @default("[]")
+  aliases           String[]  @default([])
+  /// Conversations (meetings and recordings) the person was part of or mentioned in.
+  meetingIds        String[]  @default([]) @map("meeting_ids") @db.Uuid
+  lastTalkedAt      DateTime? @map("last_talked_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, lastTalkedAt(sort: Desc)], map: "people_user_last_idx")
+  @@map("people")
+}
+
 model AssistantThread {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid

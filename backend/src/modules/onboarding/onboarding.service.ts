@@ -158,6 +158,50 @@ export class OnboardingService {
     return toProfile(await this.prisma.userProfile.findUnique({ where: { userId } }));
   }
 
+  /**
+   * Edits "what I know about you" (§10): any field can be corrected or cleared, facts edited or removed.
+   * A profile that did not exist yet is created as completed, since the user told us these things.
+   */
+  async updateProfile(
+    userId: string,
+    patch: Partial<
+      Pick<
+        UserProfile,
+        'preferredName' | 'occupation' | 'currentFocus' | 'communicationStyle' | 'tone' | 'languageStyle' | 'facts'
+      >
+    >,
+  ): Promise<UserProfile> {
+    const clean = (v: string | null | undefined) =>
+      v === undefined ? undefined : v?.replace(/\s+/g, ' ').trim() || null;
+    const facts =
+      patch.facts === undefined
+        ? undefined
+        : [
+            ...new Map(
+              patch.facts
+                .map((f) => f.replace(/\s+/g, ' ').trim())
+                .filter(Boolean)
+                .map((f) => [f.toLowerCase(), f] as const),
+            ).values(),
+          ];
+    const data = {
+      preferredName: clean(patch.preferredName),
+      occupation: clean(patch.occupation),
+      currentFocus: clean(patch.currentFocus),
+      communicationStyle: clean(patch.communicationStyle),
+      tone: clean(patch.tone),
+      languageStyle: patch.languageStyle,
+      ...(facts ? { facts: facts as Prisma.InputJsonValue } : {}),
+    };
+    const existing = await this.prisma.userProfile.findUnique({ where: { userId }, select: { status: true } });
+    const row = await this.prisma.userProfile.upsert({
+      where: { userId },
+      create: { userId, status: 'completed', ...data },
+      update: { ...data, ...(existing?.status === 'completed' ? {} : { status: 'completed' }) },
+    });
+    return toProfile(row);
+  }
+
   /** Forgets everything the profile holds (the user can always see, fix or delete what the friend knows). */
   async resetProfile(userId: string): Promise<void> {
     await this.prisma.userProfile.deleteMany({ where: { userId } });

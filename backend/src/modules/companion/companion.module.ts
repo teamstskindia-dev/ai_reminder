@@ -4,6 +4,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { CheckinService } from './checkin.service';
 import { CompanionChatService } from './companion-chat.service';
 import { CompanionContextService } from './companion-context.service';
+import { MoodInsightsService } from './mood-insights.service';
 import { NudgeService } from './nudge.service';
 import { RecapService } from './recap.service';
 
@@ -14,7 +15,21 @@ import { RecapService } from './recap.service';
  */
 @Module({
   imports: [AiModule, NotificationsModule],
-  providers: [CompanionContextService, CompanionChatService, CheckinService, NudgeService, RecapService],
-  exports: [CompanionContextService, CompanionChatService, CheckinService, NudgeService, RecapService],
+  providers: [
+    CompanionContextService,
+    CompanionChatService,
+    CheckinService,
+    NudgeService,
+    RecapService,
+    MoodInsightsService,
+  ],
+  exports: [
+    CompanionContextService,
+    CompanionChatService,
+    CheckinService,
+    NudgeService,
+    RecapService,
+    MoodInsightsService,
+  ],
 })
 export class CompanionModule {}

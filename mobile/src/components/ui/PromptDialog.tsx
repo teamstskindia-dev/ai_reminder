@@ -15,12 +15,23 @@ export interface PromptDialogProps {
   initialValue: string;
   placeholder?: string;
   maxLength?: number;
+  multiline?: boolean;
   confirmLabel?: string;
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }
 
-function PromptBody({ title, message, initialValue, placeholder, maxLength, confirmLabel = 'Save', onCancel, onSubmit }: Omit<PromptDialogProps, 'visible'>) {
+function PromptBody({
+  title,
+  message,
+  initialValue,
+  placeholder,
+  maxLength,
+  multiline,
+  confirmLabel = 'Save',
+  onCancel,
+  onSubmit,
+}: Omit<PromptDialogProps, 'visible'>) {
   const theme = useTheme();
   const [value, setValue] = useState(initialValue);
   return (
@@ -31,7 +42,15 @@ function PromptBody({ title, message, initialValue, placeholder, maxLength, conf
           {message}
         </Text>
       ) : null}
-      <TextField value={value} onChangeText={setValue} placeholder={placeholder} maxLength={maxLength} autoFocus accessibilityLabel={title} />
+      <TextField
+        value={value}
+        onChangeText={setValue}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        multiline={multiline}
+        autoFocus
+        accessibilityLabel={title}
+      />
       <View style={styles.actions}>
         <Button label="Cancel" variant="ghost" onPress={onCancel} />
         <Button label={confirmLabel} onPress={() => onSubmit(value)} />

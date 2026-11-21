@@ -121,6 +121,30 @@ export class MoodPoint implements Contract.MoodPoint {
   @ApiInteger({ minimum: 1, maximum: 5 }) energy: number | null;
 }
 
+export class WeekdayMood {
+  /** 0 Sunday … 6 Saturday. */
+  @ApiInteger({ minimum: 0, maximum: 6 }) weekday: number;
+  mood: number | null;
+  energy: number | null;
+}
+
+export class MoodInsights implements Contract.MoodInsights {
+  @ApiProperty({ type: [MoodPoint] }) days: MoodPoint[];
+  @ApiProperty({ type: [WeekdayMood] }) weekdays: WeekdayMood[];
+  averageMood: number | null;
+  averageEnergy: number | null;
+  @ApiProperty({ enum: ['up', 'down', 'flat'], nullable: true }) trend: 'up' | 'down' | 'flat' | null;
+  @ApiInteger({ minimum: 0, maximum: 6 }) bestDay: number | null;
+  @ApiInteger({ minimum: 0, maximum: 6 }) hardestDay: number | null;
+  /** What tends to lift the user's mood or energy. */
+  lifts: string[];
+  /** What tends to drain them. */
+  drains: string[];
+  note: string | null;
+  @ApiInteger({ minimum: 0 }) checkins: number;
+  @ApiDateTime() updatedAt: string | null;
+}
+
 export class RecapHighlight {
   @ApiUuid() id: string;
   title: string;

@@ -50,6 +50,8 @@ export const JOB = {
   TOOLS_WATCH: 'tools-watch',
   /** A task the tool could not take (down, rate limited): retried with backoff. */
   TOOL_TASK_RETRY: 'tool-task-retry',
+  /** Privacy (§10): build the user's data export and email the download link. */
+  DATA_EXPORT: 'data-export',
 } as const;
 
 /** Custom job ids (BullMQ forbids ':' in custom ids). */
@@ -74,6 +76,7 @@ export const JobId = {
   emailSync: (accountId: string) => `email-sync-${accountId}`,
   emailBundle: (userId: string, hourKey: string) => `email-bundle-${userId}-${hourKey}`,
   toolTaskRetry: (taskId: string, attempt: number) => `tool-task-${taskId}-${attempt}`,
+  dataExport: (userId: string, requestedAtMs: number) => `data-export-${userId}-${requestedAtMs}`,
 };
 
 const SEVEN_DAYS = 7 * 24 * 3600;
@@ -92,6 +95,9 @@ export const QUEUE_DEFAULTS: Record<QueueNameValue, DefaultJobOptions> = {
 };
 
 // ---- job payloads ----
+export interface DataExportJob {
+  userId: string;
+}
 export interface SyncUserJob {
   userId: string;
   reason?: string;

@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '@/api/queryClient';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { UndoBar } from '@/components/UndoBar';
 import { ForceUpdateScreen, MaintenanceScreen } from '@/features/bootstrap/GateScreens';
 import { useCaptureUploader } from '@/features/capture/uploadQueue';
 import { configureForegroundNotifications, registerNotificationCategories } from '@/features/push/handler';
@@ -145,6 +146,7 @@ function RootNavigator() {
           <Stack.Screen name="connected-apps" options={{ headerShown: true, title: 'Connected apps' }} />
           <Stack.Screen name="emails" options={{ headerShown: true, title: 'Email' }} />
           <Stack.Screen name="email/[id]" options={{ headerShown: true, title: '' }} />
+          <Stack.Screen name="person/[id]" options={{ headerShown: true, title: '' }} />
           <Stack.Screen name="integrations/callback" options={{ animation: 'fade' }} />
         </Stack.Protected>
 
@@ -168,6 +170,7 @@ function RootNavigator() {
         </View>
       ) : null}
       <OfflineBanner />
+      {inApp ? <UndoBar /> : null}
     </>
   );
 }

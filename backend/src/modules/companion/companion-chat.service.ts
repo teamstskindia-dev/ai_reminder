@@ -163,9 +163,19 @@ export class CompanionChatService {
     }
   }
 
-  /** Adds new facts to the profile (de-duplicated, newest kept, capped). */
-  async rememberFacts(userId: string, facts: string[]): Promise<void> {
+  /**
+   * Adds new facts to the profile (de-duplicated, newest kept, capped). Facts the friend picked up on its
+   * own are skipped while the user paused learning (§10); facts the user chose to save (`explicit`) never are.
+   */
+  async rememberFacts(userId: string, facts: string[], opts: { explicit?: boolean } = {}): Promise<void> {
     if (!facts.length) return;
+    if (!opts.explicit) {
+      const settings = await this.prisma.userSettings.findUnique({
+        where: { userId },
+        select: { learningPaused: true },
+      });
+      if (settings?.learningPaused) return;
+    }
     const profile = await this.prisma.userProfile.findUnique({ where: { userId }, select: { facts: true } });
     const current = Array.isArray(profile?.facts)
       ? profile.facts.filter((f): f is string => typeof f === 'string')

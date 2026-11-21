@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowUp, AudioLines, HatGlasses, HeartHandshake, History, MessageCirclePlus, Mic, Phone, Video } from 'lucide-react-native';
 import { memo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -193,6 +193,17 @@ export function TalkScreen() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [incognito, setIncognito] = useState(false);
   const [local, setLocal] = useState<Item[]>([]);
+  // "Incognito chat" from You → Privacy opens Talk with ?incognito=1 (adjusted during render, no effect).
+  const { incognito: incognitoParam } = useLocalSearchParams<{ incognito?: string }>();
+  const [seenParam, setSeenParam] = useState<string | undefined>(undefined);
+  if (incognitoParam !== seenParam) {
+    setSeenParam(incognitoParam);
+    if (incognitoParam === '1' && !incognito) {
+      setIncognito(true);
+      setThreadId(null);
+      setLocal([]);
+    }
+  }
   const [draft, setDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);

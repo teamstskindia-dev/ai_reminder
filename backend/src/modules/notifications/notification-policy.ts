@@ -32,6 +32,8 @@ export const PRIORITY: Record<NotificationType, NotificationPriority> = {
   push_bundle: 'normal',
   broadcast: 'normal',
   welcome: 'normal',
+  data_export_ready: 'normal',
+  account_deleted: 'normal',
   daily_digest: 'low',
 };
 

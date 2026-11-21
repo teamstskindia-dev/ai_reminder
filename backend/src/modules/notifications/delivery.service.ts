@@ -248,7 +248,10 @@ export class DeliveryService {
     await this.recordEngagement(userId, zonedParts(now, tz).hour, 0).catch(() => undefined);
   }
 
-  /** Adds one push sent (index 0) or opened (index 1) at a local hour to user_settings.push_engagement. */
+  /**
+   * Adds one push sent (index 0) or opened (index 1) at a local hour to user_settings.push_engagement.
+   * Nothing is learned while the user paused learning (§10).
+   */
   async recordEngagement(userId: string, hour: number, index: 0 | 1): Promise<void> {
     const h = String(hour);
     await this.prisma.$executeRaw(Prisma.sql`
@@ -261,7 +264,7 @@ export class DeliveryService {
                  coalesce((push_engagement->${h}->>1)::int, 0) + ${index === 1 ? 1 : 0}
                ),
                true)
-       where user_id = ${userId}::uuid`);
+       where user_id = ${userId}::uuid and not learning_paused`);
   }
 
   private async holdPush(

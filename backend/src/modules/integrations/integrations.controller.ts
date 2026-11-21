@@ -97,7 +97,7 @@ export class IntegrationsController {
   @HttpCode(204)
   @ApiOperation({
     summary: 'Disconnect an app',
-    description: 'Revokes access where the provider allows it. Emails read from it are deleted; tasks stay as to-dos.',
+    description: 'Deletes the stored access. Emails read from it are deleted; tasks stay as to-dos.',
   })
   @ApiNoContentResponse({ description: 'Disconnected.' })
   @ApiErrors('NOT_FOUND')

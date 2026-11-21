@@ -5,6 +5,7 @@ import {
   BellRing,
   CalendarClock,
   CheckCheck,
+  Download,
   FileText,
   HeartHandshake,
   Layers,
@@ -22,6 +23,7 @@ import {
   SquareCheck,
   Sun,
   TriangleAlert,
+  UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import { memo, useState } from 'react';
@@ -67,6 +69,8 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   task_created: SquareCheck,
   reconnect_needed: Plug,
   push_bundle: Layers,
+  data_export_ready: Download,
+  account_deleted: UserX,
 };
 
 const NotificationRow = memo(function NotificationRow({

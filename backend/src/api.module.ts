@@ -41,6 +41,12 @@ import { EmailController } from './modules/email/email.controller';
 import { EmailModule } from './modules/email/email.module';
 import { ToolsController } from './modules/tools/tools.controller';
 import { ToolsModule } from './modules/tools/tools.module';
+import {
+  DataExportController,
+  DataExportDownloadController,
+  MemoryController,
+} from './modules/memory/memory.controller';
+import { MemoryModule } from './modules/memory/memory.module';
 import { TodayService } from './modules/companion/today.service';
 import { ContentModule } from './modules/content/content.module';
 import { DashboardController, DashboardService } from './modules/dashboard/dashboard.controller';
@@ -106,6 +112,7 @@ class StorageBootstrap implements OnApplicationBootstrap {
     ConnectionsModule,
     EmailModule,
     ToolsModule,
+    MemoryModule,
   ],
   controllers: [
     HealthController,
@@ -118,6 +125,9 @@ class StorageBootstrap implements OnApplicationBootstrap {
     IntegrationsCallbackController,
     EmailController,
     ToolsController,
+    MemoryController,
+    DataExportController,
+    DataExportDownloadController,
     DashboardController,
     CompanionController,
     AnalyticsController,

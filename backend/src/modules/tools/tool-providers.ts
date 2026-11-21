@@ -187,7 +187,12 @@ const jira: ToolApi = {
     };
   },
   listMine(ctx) {
-    return jiraSearch(ctx, 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC', 15);
+    // Assigned to the user, or created by them and not assigned to anyone yet (Jira's default for new issues).
+    return jiraSearch(
+      ctx,
+      '(assignee = currentUser() OR (assignee is EMPTY AND reporter = currentUser())) AND statusCategory != Done ORDER BY updated DESC',
+      15,
+    );
   },
   async status(ctx, id) {
     const issue = await orNull(
@@ -296,13 +301,23 @@ const linear: ToolApi = {
     return { externalId: issue.id, externalKey: issue.identifier, url: issue.url, assigned: Boolean(assigneeId) };
   },
   async listMine(ctx) {
-    const d = await linearQuery<{ viewer: { assignedIssues: { nodes: LinearIssue[] } } }>(
+    // Assigned to the user, plus issues they created that nobody is assigned to yet.
+    const d = await linearQuery<{
+      viewer: { assignedIssues: { nodes: LinearIssue[] }; createdIssues: { nodes: LinearIssue[] } };
+    }>(
       ctx,
       'linear.mine',
-      `{ viewer { assignedIssues(first: 15, orderBy: updatedAt, filter: ${OPEN_STATES}) { nodes { ${ISSUE_FIELDS} } } } }`,
+      `{ viewer {
+          assignedIssues(first: 15, orderBy: updatedAt, filter: ${OPEN_STATES}) { nodes { ${ISSUE_FIELDS} } }
+          createdIssues(first: 15, orderBy: updatedAt, filter: { assignee: { null: true }, state: { type: { nin: ["completed", "canceled"] } } }) { nodes { ${ISSUE_FIELDS} } }
+        } }`,
       {},
     );
-    return d.viewer.assignedIssues.nodes.map(linearItem);
+    const seen = new Set<string>();
+    return [...d.viewer.assignedIssues.nodes, ...d.viewer.createdIssues.nodes]
+      .filter((i) => !seen.has(i.id) && seen.add(i.id))
+      .slice(0, 15)
+      .map(linearItem);
   },
   async status(ctx, id) {
     const d = await linearQuery<{ issue: LinearIssue | null }>(

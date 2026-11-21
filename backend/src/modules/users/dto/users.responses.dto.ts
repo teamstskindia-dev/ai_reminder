@@ -59,6 +59,8 @@ export class UserSettings implements Contract.UserSettings {
   @ApiDateTime() focusUntil: string | null;
   /** "Take a break" from the friend's nudges until this time (`null` = off). */
   @ApiDateTime() nudgesPausedUntil: string | null;
+  /** Memories are kept but the friend learns nothing new about the user. */
+  learningPaused: boolean;
 }
 
 export class AuthTokens implements Contract.AuthTokens {

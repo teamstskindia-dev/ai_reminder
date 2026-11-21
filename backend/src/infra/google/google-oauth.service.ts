@@ -9,6 +9,13 @@ export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 /** Granted by accounts connected before scheduling existed: sync works, scheduling needs a reconnect. */
 export const CALENDAR_READONLY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
 export const GOOGLE_SCOPES = ['openid', 'email', 'profile', CALENDAR_SCOPE];
+/** Gmail (user-flow §07): asked on the same Google sign-in as Calendar when Gmail is enabled. */
+export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+
+export function hasGmailScope(scope: string | null | undefined): boolean {
+  return (scope ?? '').split(' ').includes(GMAIL_READ_SCOPE);
+}
 
 export function hasCalendarScope(scope: string | null | undefined): boolean {
   const granted = (scope ?? '').split(' ');
@@ -63,7 +70,7 @@ export class GoogleOAuthService {
       access_type: 'offline',
       prompt: 'consent',
       include_granted_scopes: true,
-      scope: GOOGLE_SCOPES,
+      scope: this.config.integrations.gmail ? [...GOOGLE_SCOPES, GMAIL_READ_SCOPE, GMAIL_SEND_SCOPE] : GOOGLE_SCOPES,
       state,
       code_challenge: codeChallenge,
       code_challenge_method: CodeChallengeMethod.S256,

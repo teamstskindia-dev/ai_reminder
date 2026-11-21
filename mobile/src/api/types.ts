@@ -84,7 +84,8 @@ export type IconKey =
   | 'users'
   | 'file-text'
   | 'bell'
-  | 'check';
+  | 'check'
+  | 'memory';
 
 // ---------- Public config ----------
 export interface Branding {
@@ -269,6 +270,8 @@ export interface UserSettings {
   focusUntil: ISODate | null;
   /** "Take a break" from nudges until this time (null = off). */
   nudgesPausedUntil: ISODate | null;
+  /** Privacy (§10): memories are kept but nothing new is learned about the user. */
+  learningPaused: boolean;
 }
 
 /** PATCH /me/settings body: settings fields plus write-only flags. */
@@ -566,7 +569,9 @@ export type NotificationType =
   | 'email_bundle'
   | 'task_created'
   | 'reconnect_needed'
-  | 'push_bundle';
+  | 'push_bundle'
+  | 'data_export_ready'
+  | 'account_deleted';
 
 export interface NotificationData {
   meetingId?: string;
@@ -843,6 +848,104 @@ export interface MoodPoint {
   mood: number | null;
   energy: number | null;
 }
+
+// ---------- Memory, You and privacy (user-flow §10) ----------
+/** conversation: a recording · meeting: a recorded calendar meeting · checkin: an evening chat · email. */
+export type MemoryKind = 'conversation' | 'meeting' | 'checkin' | 'email';
+
+export interface MemoryItem {
+  kind: MemoryKind;
+  id: string;
+  title: string;
+  snippet: string | null;
+  at: ISODate;
+  mood: number | null;
+  people: string[];
+}
+
+export interface MemoryDay {
+  date: string;
+  items: MemoryItem[];
+}
+
+export interface MemoryTimeline {
+  days: MemoryDay[];
+  nextCursor: ISODate | null;
+}
+
+export interface MemorySearchResult {
+  item: MemoryItem;
+  quote: string | null;
+  similarity: number | null;
+}
+
+export interface MemorySearch {
+  query: string;
+  results: MemorySearchResult[];
+  /** When nothing matched: memories to look at instead. */
+  related: MemoryItem[];
+}
+
+export interface PersonListItem {
+  id: string;
+  name: string;
+  relationship: string | null;
+  lastTalkedAt: ISODate | null;
+  conversationCount: number;
+  openPromises: number;
+}
+
+export interface PersonPromise {
+  id: string;
+  title: string;
+  dueAt: ISODate | null;
+  status: string;
+}
+
+export interface PersonDetail extends PersonListItem {
+  facts: string[];
+  aliases: string[];
+  promises: { iOwe: PersonPromise[]; theyOwe: PersonPromise[] };
+  conversations: MemoryItem[];
+}
+
+export interface NameCorrection {
+  from: string;
+  to: string;
+}
+
+export interface NameFixResult {
+  conversations: number;
+  remembered: boolean;
+}
+
+export interface MoodInsights {
+  days: MoodPoint[];
+  weekdays: { weekday: number; mood: number | null; energy: number | null }[];
+  averageMood: number | null;
+  averageEnergy: number | null;
+  trend: 'up' | 'down' | 'flat' | null;
+  bestDay: number | null;
+  hardestDay: number | null;
+  lifts: string[];
+  drains: string[];
+  note: string | null;
+  checkins: number;
+  updatedAt: ISODate | null;
+}
+
+export type DataExportState = 'none' | 'preparing' | 'ready';
+
+export interface DataExportStatus {
+  status: DataExportState;
+  url: string | null;
+  requestedAt: ISODate | null;
+  expiresAt: ISODate | null;
+}
+
+export type ProfilePatch = Partial<
+  Pick<UserProfile, 'preferredName' | 'occupation' | 'currentFocus' | 'communicationStyle' | 'tone' | 'languageStyle' | 'facts'>
+>;
 
 export interface WeeklyRecap {
   weekStart: string;

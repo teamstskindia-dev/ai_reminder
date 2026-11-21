@@ -1,10 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { EllipsisVertical, ExternalLink, FileSearch, ListChecks, LogOut, Plus, RefreshCw, Search, Send, Trash } from 'lucide-react-native';
+import { EllipsisVertical, ExternalLink, FileSearch, ListChecks, LogOut, Pencil, Plus, RefreshCw, Search, Send, Share2, Trash } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { isApiError } from '@/api/errors';
+import { getErrorMessage, isApiError } from '@/api/errors';
 import { useBotControl, useDeleteMeeting, useMeeting, useReprocessMeeting, useToggleAutoJoin, useTranscript } from '@/api/hooks/meetings';
 import type { MeetingDetail, TranscriptSegment } from '@/api/types';
 import { ActionSheet, type ActionSheetOption } from '@/components/ui/ActionSheet';
@@ -33,6 +33,8 @@ import { PeopleTab } from './PeopleTab';
 import { ScoresRow } from './ScoresRow';
 import { SummaryTab } from './SummaryTab';
 import { TranscriptItem } from './TranscriptItem';
+import { shareSummary, useConversationFixes } from '@/features/memory/conversationTools';
+import { undoable } from '@/utils/undo';
 
 type Segment = 'summary' | 'actions' | 'transcript' | 'people';
 
@@ -71,6 +73,7 @@ export function MeetingDetailScreen() {
   const toggleAutoJoin = useToggleAutoJoin();
   const actionItems = useActionItemActions();
   const [menuOpen, setMenuOpen] = useState(false);
+  const fixes = useConversationFixes(id ?? '');
   const refreshControl = useRefreshControl(() =>
     Promise.all([meetingQuery.refetch(), segment === 'transcript' ? transcript.refetch() : Promise.resolve()]),
   );
@@ -118,14 +121,16 @@ export function MeetingDetailScreen() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () =>
-          remove.mutate(m.id, {
-            onSuccess: () => {
-              toast('Meeting deleted');
-              if (router.canGoBack()) router.back();
-              else router.replace('/meetings');
-            },
-          }),
+        onPress: () => {
+          // Undo for a few seconds before it is really deleted (user-flow §10).
+          if (router.canGoBack()) router.back();
+          else router.replace('/memory');
+          undoable({
+            message: 'Meeting deleted',
+            commit: () => remove.mutateAsync(m.id),
+            onError: (e) => toast(getErrorMessage(e)),
+          });
+        },
       },
     ]);
   };
@@ -139,6 +144,24 @@ export function MeetingDetailScreen() {
         ...(canRecallBot(meeting.status) ? [{ key: 'leave', label: 'Remove notetaker', icon: LogOut, onPress: () => runBot('leave') }] : []),
         ...(meeting.status === 'completed' || meeting.status === 'failed'
           ? [{ key: 'reprocess', label: 'Regenerate report', icon: RefreshCw, onPress: confirmReprocess }]
+          : []),
+        ...(meeting.report
+          ? [
+              {
+                key: 'share',
+                label: 'Share summary',
+                icon: Share2,
+                onPress: () =>
+                  void shareSummary({
+                    title: meeting.title,
+                    at: meeting.startAt,
+                    summary: meeting.report?.summary ?? null,
+                    keyPoints: meeting.report?.keyPoints,
+                    todos: meeting.actionItems.map((a) => a.title),
+                  }),
+              },
+              { key: 'summary', label: 'Fix the summary', icon: Pencil, onPress: () => fixes.editSummary(meeting.report?.summary ?? '') },
+            ]
           : []),
         { key: 'delete', label: 'Delete meeting', icon: Trash, destructive: true, onPress: () => confirmDelete(meeting) },
       ]
@@ -268,7 +291,9 @@ export function MeetingDetailScreen() {
       <FlatList
         data={activeSegment === 'transcript' ? filtered : []}
         keyExtractor={(s) => String(s.seq)}
-        renderItem={({ item }) => <TranscriptItem segment={item} query={query} />}
+        renderItem={({ item }) => (
+          <TranscriptItem segment={item} query={query} onSpeakerPress={fixes.fixName} onTextPress={fixes.editLine} />
+        )}
         ListHeaderComponent={header}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         refreshControl={refreshControl}
@@ -279,6 +304,7 @@ export function MeetingDetailScreen() {
       />
       <ActionSheet visible={menuOpen} title={meeting.title} options={menuOptions} onClose={() => setMenuOpen(false)} />
       {actionItems.sheet}
+      {fixes.dialogs}
     </View>
   );
 }

@@ -2,7 +2,7 @@ import type { FeatureKey, NavItem } from '@/api/types';
 import { useConfig } from '@/providers/config/ConfigProvider';
 
 /** Tab route names the app implements (contract: mobile tab hrefs are expo-router tab names). */
-export const TAB_ROUTES = ['home', 'meetings', 'reminders', 'ask', 'profile'] as const;
+export const TAB_ROUTES = ['home', 'meetings', 'reminders', 'ask', 'memory', 'profile'] as const;
 export type TabRoute = (typeof TAB_ROUTES)[number];
 
 /** Features a tab needs; any one of them keeps the tab visible. */
