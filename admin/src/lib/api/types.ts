@@ -143,6 +143,7 @@ export const ICON_KEYS = [
   'file-text',
   'bell',
   'check',
+  'memory',
 ] as const;
 export type IconKey = (typeof ICON_KEYS)[number];
 

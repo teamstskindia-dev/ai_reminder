@@ -1,7 +1,8 @@
 import { Processor } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { BaseProcessor, PermanentJobError } from '../../infra/queue/base.processor';
-import { JOB, MeetingPromptJob, NudgeJob, QUEUE, RhythmJob } from '../../infra/queue/queue.constants';
+import { DataExportJob, JOB, MeetingPromptJob, NudgeJob, QUEUE, RhythmJob } from '../../infra/queue/queue.constants';
+import { PrivacyService } from '../memory/privacy.service';
 import { CheckinService } from './checkin.service';
 import { MeetingPromptsService } from './meeting-prompts.service';
 import { MorningBriefService } from './morning-brief.service';
@@ -11,9 +12,9 @@ import { RecapService } from './recap.service';
 import { RhythmService } from './rhythm.service';
 import { weekStartOf } from './rhythm.util';
 
-type CompanionJobData = RhythmJob | NudgeJob | MeetingPromptJob | Record<string, never>;
+type CompanionJobData = RhythmJob | NudgeJob | MeetingPromptJob | DataExportJob | Record<string, never>;
 
-/** `companion` queue: the 5-minute rhythm tick and the per-user daily-rhythm jobs it fans out. */
+/** `companion` queue: the 5-minute rhythm tick, the per-user daily-rhythm jobs it fans out and data exports. */
 @Processor(QUEUE.COMPANION, { concurrency: 4 })
 export class CompanionProcessor extends BaseProcessor<CompanionJobData> {
   constructor(
@@ -24,6 +25,7 @@ export class CompanionProcessor extends BaseProcessor<CompanionJobData> {
     private readonly recaps: RecapService,
     private readonly nudges: NudgeService,
     private readonly meetingPrompts: MeetingPromptsService,
+    private readonly privacy: PrivacyService,
   ) {
     super();
   }
@@ -51,6 +53,8 @@ export class CompanionProcessor extends BaseProcessor<CompanionJobData> {
         const d = job.data as MeetingPromptJob;
         return { outcome: await this.meetingPrompts.notes(d.meetingId, d.at) };
       }
+      case JOB.DATA_EXPORT:
+        return this.privacy.build((job.data as DataExportJob).userId);
       default:
         throw new PermanentJobError(`Unknown companion job "${job.name}"`);
     }

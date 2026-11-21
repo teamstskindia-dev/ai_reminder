@@ -214,6 +214,26 @@ In Talk, "I need a break for 3 days" does the same.
 All of this is JavaScript only (`expo-web-browser` and `expo-linking` were already in the app): no rebuild of the
 development build is needed.
 
+## Memory, You and privacy (user-flow §10)
+
+Four tabs + the record button: **Today**, **Talk**, **Memory**, **You** (from `navigation.mobile_tab`; Meetings and
+Reminders stay reachable from Today and can be turned back on in the admin panel).
+
+- **Memory** (`src/features/memory/`): the **timeline** by day (conversations, recorded meetings, check-in
+  highlights, email summaries), **People** (relationship, last talked, promises both ways, key facts, conversations;
+  add, rename, merge or forget a card), and **search by meaning** ("when was I worried about money?"). No match says
+  so and offers related memories.
+- In a conversation (recording or meeting): tap a **speaker or a person** to fix the name (a real name is fixed in
+  every conversation, on the person card and in future transcripts; "Speaker 2" only here), tap a **transcript line**
+  or **Fix** on the summary to correct text, **Share** the summary (WhatsApp, email, copy), and **Delete** with a
+  few seconds of **Undo** (`src/utils/undo.ts` + `UndoBar`).
+- **You**: "What I know about you" (edit or delete every field and fact, the friend's **tone** and **language**, the
+  name fixes it remembers), **Mood and energy** (weekday pattern, trend, what lifts and drains you), the settings, and
+  **Privacy**: **Pause learning**, **Incognito chat** (opens Talk with `?incognito=1`), **Export my data** (link
+  emailed and shown here, valid 3 days) and **Delete account** (confirmation email).
+
+JavaScript only again: no new native modules, so the existing development build works (reload the app).
+
 ## Builds (EAS)
 
 The repo uses Continuous Native Generation — no committed `ios/` or `android/` folders. Native configuration lives in

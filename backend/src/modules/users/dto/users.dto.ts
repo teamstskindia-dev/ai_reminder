@@ -164,4 +164,9 @@ export class UpdateUserSettingsDto {
   @IsOptionalNullable()
   @IsDateTime()
   nudgesPausedUntil?: string | null;
+
+  /** Privacy: keep memories but learn nothing new about the user (facts, profile, mood, timing). */
+  @IsOptionalNonNull()
+  @IsBoolean()
+  learningPaused?: boolean;
 }

@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   BellRing,
+  Brain,
   Calendar,
   Check,
   CircleHelp,
@@ -63,6 +64,7 @@ export const ICON_MAP: Record<IconKey, LucideIcon> = {
   'file-text': FileText,
   bell: Bell,
   check: Check,
+  memory: Brain,
 };
 
 export function iconFor(key: string | null | undefined): LucideIcon {

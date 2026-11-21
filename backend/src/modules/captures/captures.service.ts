@@ -348,7 +348,7 @@ export class CapturesService {
       .map((f) => known.get(f.trim().toLowerCase()))
       .filter((f): f is string => !!f && !saved.has(f.toLowerCase()));
     if (toSave.length) {
-      await this.companion.rememberFacts(userId, toSave);
+      await this.companion.rememberFacts(userId, toSave, { explicit: true });
       insights.savedFacts = [...insights.savedFacts, ...toSave];
     }
 

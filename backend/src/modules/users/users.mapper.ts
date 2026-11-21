@@ -51,6 +51,7 @@ export function toUserSettings(row: UserSettingsRow): UserSettings {
       row.nudgesPausedUntil && row.nudgesPausedUntil.getTime() > Date.now()
         ? row.nudgesPausedUntil.toISOString()
         : null,
+    learningPaused: row.learningPaused,
   };
 }
 

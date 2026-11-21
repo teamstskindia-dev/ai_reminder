@@ -10,6 +10,7 @@ import {
   CompanionNudge,
   CompanionTextDto,
   DailyCheckin,
+  MoodInsights,
   MoodPoint,
   MoodQueryDto,
   NudgeReply,
@@ -17,6 +18,7 @@ import {
   TodayBrief,
   WeeklyRecap,
 } from './companion.dto';
+import { MoodInsightsService } from './mood-insights.service';
 import { NudgeService } from './nudge.service';
 import { RecapService } from './recap.service';
 import { TodayService } from './today.service';
@@ -30,6 +32,7 @@ export class CompanionController {
     private readonly checkins: CheckinService,
     private readonly nudges: NudgeService,
     private readonly recaps: RecapService,
+    private readonly moodInsights: MoodInsightsService,
   ) {}
 
   @Get('today')
@@ -79,6 +82,18 @@ export class CompanionController {
   @ApiErrors('BAD_REQUEST')
   checkinFinish(@CurrentUserId() userId: string) {
     return this.checkins.finish(userId);
+  }
+
+  @Get('checkins/mood/insights')
+  @ApiOperation({
+    summary: 'Mood and energy insights',
+    description:
+      'Last 28 days, averages per weekday (8 weeks), the trend of the last week, the best and hardest weekday, ' +
+      'and what lifts and drains the user (refreshed weekly by night learning).',
+  })
+  @ApiDataResponse(MoodInsights)
+  moodInsightsGet(@CurrentUserId() userId: string) {
+    return this.moodInsights.get(userId);
   }
 
   @Get('checkins/mood')

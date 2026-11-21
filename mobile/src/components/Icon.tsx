@@ -21,6 +21,7 @@ import {
   Video,
   Zap,
   AlarmClock,
+  Brain,
   type LucideIcon,
 } from 'lucide-react-native';
 import { createElement } from 'react';
@@ -54,6 +55,7 @@ const ICONS: Record<IconKey, LucideIcon> = {
   'file-text': FileText,
   bell: Bell,
   check: Check,
+  memory: Brain,
 };
 
 export const FALLBACK_ICON: LucideIcon = LayoutGrid;

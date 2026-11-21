@@ -509,7 +509,7 @@ export class TalkService {
       case 'read_email':
         return [await this.readEmail(user, a, tz, id)];
       case 'tool_query':
-        return [await this.toolQuery(user, a, id, ctx)];
+        return this.toolQuery(user, a, id, ctx);
       case 'save_note':
         return [await this.proposeNote(user, a, id, ctx.text)];
       case 'pause_nudges':
@@ -640,64 +640,92 @@ export class TalkService {
     };
   }
 
-  /** "What is pending on my Jira?" / "Prep me for sprint review": open items plus a short answer. */
+  /**
+   * "What is pending on my Jira?" / "Prep me for sprint review": open items plus a short answer. Without a named
+   * tool every connected tool is asked (one card each), so a Jira task is never missed because Notion came first.
+   */
   private async toolQuery(
     user: CompanionUser,
     a: ActionOut,
     id: string,
     ctx: { memory: string; text: string },
-  ): Promise<TalkAction> {
+  ): Promise<TalkAction[]> {
     const named = a.tool && isToolProvider(a.tool.toLowerCase()) ? (a.tool.toLowerCase() as ToolProvider) : null;
+    const card = (cardId: string, provider: ToolProvider, items: ToolItem[], note: string | null): TalkAction => ({
+      id: cardId,
+      type: 'tool_list',
+      status: 'info',
+      tool: provider,
+      title: pick(user.lang, `Open in ${PROVIDER_NAME[provider]}`, `${PROVIDER_NAME[provider]} mein pending`),
+      items,
+      note,
+    });
     try {
-      const { provider, items } = await this.toolTasks.listMine(user.userId, named);
-      const answer = await this.toolAnswer(user, a.request ?? ctx.text, provider, items, ctx.memory);
-      return {
-        id,
-        type: 'tool_list',
-        status: 'info',
-        tool: provider,
-        title: pick(user.lang, `Open in ${PROVIDER_NAME[provider]}`, `${PROVIDER_NAME[provider]} mein pending`),
-        items,
-        note: answer,
-      };
+      if (named) {
+        const { provider, items } = await this.toolTasks.listMine(user.userId, named);
+        return [
+          card(
+            id,
+            provider,
+            items,
+            await this.toolAnswer(user, a.request ?? ctx.text, [{ provider, items }], ctx.memory),
+          ),
+        ];
+      }
+      const lists = await this.toolTasks.listAllMine(user.userId);
+      const ok = lists.filter((l) => !l.failed);
+      if (!ok.length) throw new Error('no tool answered');
+      const answer = await this.toolAnswer(user, a.request ?? ctx.text, ok, ctx.memory);
+      const failed = lists.filter((l) => l.failed).map((l) => PROVIDER_NAME[l.provider]);
+      const note = failed.length
+        ? `${answer} ${pick(user.lang, `(I couldn't reach ${failed.join(', ')}.)`, `(${failed.join(', ')} tak pahunch nahi paaya.)`)}`
+        : answer;
+      return ok.map((l, i) => card(i === 0 ? id : `${id}-${l.provider}`, l.provider, l.items, i === 0 ? note : null));
     } catch (err) {
       if (!(err instanceof AppException)) this.logger.warn({ causes: causeChain(err) }, 'tool query failed');
-      return {
-        id,
-        type: 'unavailable',
-        status: 'info',
-        feature: 'tool',
-        note:
-          err instanceof AppException && err.code === 'CONFLICT'
-            ? err.message
-            : pick(
-                user.lang,
-                'I couldn’t reach your tool just now. Try again in a bit?',
-                'Abhi tool tak pahunch nahi paaya. Thodi der mein phir try karein?',
-              ),
-      };
+      return [
+        {
+          id,
+          type: 'unavailable',
+          status: 'info',
+          feature: 'tool',
+          note:
+            err instanceof AppException && err.code === 'CONFLICT'
+              ? err.message
+              : pick(
+                  user.lang,
+                  'I couldn’t reach your tool just now. Try again in a bit?',
+                  'Abhi tool tak pahunch nahi paaya. Thodi der mein phir try karein?',
+                ),
+        },
+      ];
     }
   }
 
-  /** Combines the tool's open items with memory (meeting notes) to answer the request. Never invents items. */
+  /** Combines the tools' open items with memory (meeting notes) to answer the request. Never invents items. */
   private async toolAnswer(
     user: CompanionUser,
     request: string,
-    provider: ToolProvider,
-    items: ToolItem[],
+    lists: { provider: ToolProvider; items: ToolItem[] }[],
     memory: string,
   ): Promise<string> {
-    const name = PROVIDER_NAME[provider];
-    const plain = items.length
-      ? pick(user.lang, `You have ${items.length} open in ${name}.`, `${name} mein ${items.length} pending hain.`)
-      : pick(user.lang, `Nothing open for you in ${name}.`, `${name} mein tumhare liye kuch pending nahi.`);
-    if (this.gemini.isMock || !items.length) return plain;
+    const name = lists.map((l) => PROVIDER_NAME[l.provider]).join(' + ');
+    const total = lists.reduce((n, l) => n + l.items.length, 0);
+    const counts = lists.map((l) => `${PROVIDER_NAME[l.provider]} ${l.items.length}`).join(', ');
+    const plain = !total
+      ? pick(user.lang, `Nothing open for you in ${name}.`, `${name} mein tumhare liye kuch pending nahi.`)
+      : lists.length > 1
+        ? pick(user.lang, `You have ${total} open (${counts}).`, `Total ${total} pending hain (${counts}).`)
+        : pick(user.lang, `You have ${total} open in ${name}.`, `${name} mein ${total} pending hain.`);
+    if (this.gemini.isMock || !total) return plain;
     try {
       const ai = await this.settings.get('ai');
-      const list = items
-        .map(
-          (i) =>
-            `- ${i.key ? `${i.key} ` : ''}${i.title}${i.status ? ` [${i.status}]` : ''}${i.dueAt ? ` (due ${i.dueAt.slice(0, 10)})` : ''}`,
+      const list = lists
+        .flatMap((l) =>
+          l.items.map(
+            (i) =>
+              `- [${PROVIDER_NAME[l.provider]}] ${i.key ? `${i.key} ` : ''}${i.title}${i.status ? ` [${i.status}]` : ''}${i.dueAt ? ` (due ${i.dueAt.slice(0, 10)})` : ''}`,
+          ),
         )
         .join('\n');
       const text = await this.gemini.generateText({

@@ -1,5 +1,6 @@
 import type { ConnectedProvider, EmailProvider, ToolProvider } from '../../common/types/api.types';
 import type { Provider } from '../../infra/external/external-call';
+import { GMAIL_READ_SCOPE, GMAIL_SEND_SCOPE } from '../../infra/google/google-oauth.service';
 import { basicAuth, httpJson } from './provider-http';
 
 /**
@@ -43,8 +44,7 @@ export function isConnectedProvider(p: string): p is ConnectedProvider {
   return (CONNECTED_PROVIDERS as string[]).includes(p);
 }
 
-export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
-export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+export { GMAIL_READ_SCOPE, GMAIL_SEND_SCOPE };
 export const NOTION_VERSION = '2022-06-28';
 
 export interface OAuthClient {
@@ -434,17 +434,4 @@ export async function identify(provider: ConnectedProvider, tokens: TokenSet): P
       return { label: me.email ?? 'Todoist', externalId: me.id != null ? String(me.id) : null, settings: {} };
     }
   }
-}
-
-/** Best-effort revocation when the user disconnects (only Google exposes a simple endpoint). */
-export async function revokeToken(provider: ConnectedProvider, token: string): Promise<void> {
-  if (provider !== 'gmail') return;
-  await httpJson({
-    provider: 'google',
-    operation: 'oauth.revoke',
-    method: 'POST',
-    url: 'https://oauth2.googleapis.com/revoke',
-    body: new URLSearchParams({ token }),
-    retries: 1,
-  });
 }
