@@ -102,9 +102,19 @@ export class AiPipelineService {
     if (!segments.length) throw new PermanentJobError('ai: the meeting has no transcript to process');
     const user = await this.prisma.user.findUnique({
       where: { id: meeting.userId },
-      select: { name: true, email: true, timezone: true, profile: { select: { languageStyle: true } } },
+      select: {
+        name: true,
+        email: true,
+        timezone: true,
+        profile: { select: { languageStyle: true, preferredName: true } },
+      },
     });
     if (!user) throw new PermanentJobError('User no longer exists');
+    // What the user asked to be called (onboarding / You) wins over the account name in summaries and facts;
+    // the account name is still passed so the model knows it is the same person when it comes up.
+    const accountName = user.name?.trim() || null;
+    const callName = user.profile?.preferredName?.trim() || accountName || user.email;
+    const alsoKnownAs = accountName && accountName !== callName ? accountName : null;
 
     const lines = formatTranscriptLines(segments);
     const attendees = toAttendees(meeting.attendees);
@@ -113,7 +123,8 @@ export class AiPipelineService {
       meetingTitle: meeting.title,
       meetingStart: meeting.startAt,
       attendees: attendees.map((a) => a.name ?? a.email).filter(Boolean),
-      userName: user.name ?? user.email,
+      userName: callName,
+      userAlsoKnownAs: alsoKnownAs,
       userEmail: user.email,
       timezone: user.timezone,
     });
@@ -125,7 +136,8 @@ export class AiPipelineService {
       insights = await this.captureInsights.generate({
         lines: lines.join('\n'),
         reminders: report.reminders,
-        userName: user.name ?? user.email,
+        userName: callName,
+        userAlsoKnownAs: alsoKnownAs,
         timezone: user.timezone,
         languageStyle: user.profile?.languageStyle ?? 'english',
       });

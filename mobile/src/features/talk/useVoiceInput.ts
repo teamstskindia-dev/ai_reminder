@@ -22,10 +22,17 @@ const SILENCE_MS = 1600;
 const NO_SPEECH_MS = 8000;
 
 export type VoiceInputState = 'idle' | 'recording';
+export type VoiceStartResult = 'started' | 'denied' | 'error' | 'cancelled';
+
+const isAlreadyPrepared = (error: unknown) =>
+  /already been prepared/i.test(error instanceof Error ? error.message : String(error));
 
 /**
  * Microphone input for Talk: hold-to-speak (start on press, stop on release) and the hands-free voice mode
  * (`autoStop`: stops by itself after a pause in speech). `level` (0…1) drives the voice orb.
+ *
+ * Starting takes a moment (permission check, preparing the recorder). A `stop()` that arrives during that
+ * window cancels the start instead of being lost, so a quick tap never leaves the recorder running.
  */
 export function useVoiceInput(opts: { autoStop?: boolean; onAutoStop?: (uri: string | null) => void } = {}) {
   const recorder = useAudioRecorder(OPTIONS);
@@ -34,37 +41,67 @@ export function useVoiceInput(opts: { autoStop?: boolean; onAutoStop?: (uri: str
   const startedAt = useRef(0);
   const heardSpeech = useRef(false);
   const quietSince = useRef<number | null>(null);
-  const stopping = useRef(false);
+  /** The recorder is recording and has not been stopped yet. */
+  const active = useRef(false);
+  /** A start is in progress. */
+  const starting = useRef(false);
+  /** `stop()` was called while starting: abandon the start. */
+  const cancelStart = useRef(false);
   const onAutoStop = useRef(opts.onAutoStop);
   useEffect(() => {
     onAutoStop.current = opts.onAutoStop;
   });
 
-  const start = useCallback(async (): Promise<'started' | 'denied' | 'error'> => {
+  const start = useCallback(async (): Promise<VoiceStartResult> => {
+    if (starting.current || active.current) return 'error';
+    starting.current = true;
+    cancelStart.current = false;
     try {
       let permission = await getRecordingPermissionsAsync();
       if (!permission.granted && permission.canAskAgain) permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) return 'denied';
+      if (cancelStart.current) return 'cancelled';
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
+      // A session left over from an interrupted press: stop it so this one can start cleanly.
+      try {
+        if (recorder.getStatus().isRecording) await recorder.stop();
+      } catch {
+        // Nothing to stop.
+      }
+      try {
+        await recorder.prepareToRecordAsync();
+      } catch (error) {
+        // Prepared earlier but never recorded: reuse that session.
+        if (!isAlreadyPrepared(error)) throw error;
+      }
+      if (cancelStart.current) {
+        await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+        return 'cancelled';
+      }
       recorder.record();
       startedAt.current = Date.now();
       heardSpeech.current = false;
       quietSince.current = null;
-      stopping.current = false;
+      active.current = true;
       setState('recording');
       return 'started';
     } catch (error) {
       reportError(error, { source: 'talk-voice-start' });
       setState('idle');
       return 'error';
+    } finally {
+      starting.current = false;
     }
   }, [recorder]);
 
-  /** Stops and returns the file (null when too short to be speech). */
+  /** Stops and returns the file (null when too short to be speech, or when nothing was recording). */
   const stop = useCallback(async (): Promise<string | null> => {
-    if (stopping.current) return null;
-    stopping.current = true;
+    if (starting.current) {
+      cancelStart.current = true;
+      return null;
+    }
+    if (!active.current) return null;
+    active.current = false;
     try {
       await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);

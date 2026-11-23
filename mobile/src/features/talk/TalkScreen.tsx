@@ -264,14 +264,21 @@ export function TalkScreen() {
   };
 
   // Hold to speak: press starts, release transcribes and sends.
+  const pressedAt = useRef(0);
+  const holdHint = () => toast(pick(lang, 'Hold the mic while you speak, then let go.', 'Bolte waqt mic dabaye rakho, phir chhod do.'));
   const onHoldStart = async () => {
+    pressedAt.current = Date.now();
     const r = await hold.start();
     if (r === 'denied') toast(pick(lang, 'Mic is off. Allow it in Settings, or type instead.', 'Mic band hai. Settings mein allow karo, ya type karo.'));
+    else if (r === 'error') toast(pick(lang, "Couldn't start the mic. Try again.", 'Mic shuru nahi hua. Dobara try karo.'));
   };
   const onHoldEnd = async () => {
-    if (hold.state !== 'recording') return;
+    // Always ask the hook to stop: it also cancels a start that is still in progress.
     const uri = await hold.stop();
-    if (!uri) return;
+    if (!uri) {
+      if (Date.now() - pressedAt.current < 600) holdHint();
+      return;
+    }
     try {
       const text = await transcribe.mutateAsync(uri);
       if (text.trim()) await sendText(text);
