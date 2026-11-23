@@ -16,6 +16,7 @@ import { GeminiService, parseJsonLoose } from '../../infra/gemini/gemini.service
 import { SettingsService } from '../content/settings.service';
 import { PromptsRepository } from './prompts.repository';
 import type { ReportOutput } from './report.schema';
+import { aliasNote } from './transcript-format';
 
 const MOODS = ['happy', 'calm', 'neutral', 'stressed', 'low'] as const;
 
@@ -115,6 +116,8 @@ export interface InsightsInput {
   lines: string;
   reminders: ReportOutput['reminders'];
   userName: string;
+  /** The account name when the user asked to be called something else (so it is not taken for another person). */
+  userAlsoKnownAs?: string | null;
   timezone: string;
   languageStyle: string;
 }
@@ -167,7 +170,7 @@ export class CaptureInsightsService {
               timezone: input.timezone,
               languageStyle: input.languageStyle,
             }),
-            contents: `<transcript>\n${input.lines}\n</transcript>`,
+            contents: `<transcript>\n${input.lines}\n</transcript>${aliasNote(input.userName, input.userAlsoKnownAs)}`,
             temperature: 0.2,
             maxOutputTokens: 4096,
             responseSchema: INSIGHTS_RESPONSE_SCHEMA,

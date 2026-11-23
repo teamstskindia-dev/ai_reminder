@@ -6,6 +6,18 @@ export interface LineSegment {
   startMs: number;
 }
 
+/**
+ * Appended after the transcript when the user goes by a chosen name: tells the model the account name is the
+ * same person, and which name to write. Empty when there is no other name.
+ */
+export function aliasNote(userName: string, alsoKnownAs?: string | null): string {
+  if (!alsoKnownAs || alsoKnownAs === userName) return '';
+  return (
+    `\n\nNote: the user's account name is "${alsoKnownAs}"; that is the same person as ${userName}, not someone else. ` +
+    `Always refer to them as ${userName}.`
+  );
+}
+
 /** "[mm:ss] Speaker: text" lines, the transcript format the meeting_report prompt expects. */
 export function formatTranscriptLines(segments: LineSegment[]): string[] {
   return segments.map((s) => `[${formatClock(s.startMs)}] ${s.speaker}: ${s.text.replace(/\s+/g, ' ').trim()}`);

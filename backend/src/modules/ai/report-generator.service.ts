@@ -9,6 +9,7 @@ import { SettingsService } from '../content/settings.service';
 import { PromptsRepository } from './prompts.repository';
 import { buildMockReport } from './report-mock';
 import { REPORT_RESPONSE_SCHEMA, ReportOutput, reportOutputSchema } from './report.schema';
+import { aliasNote } from './transcript-format';
 
 /** ~100k tokens of transcript; longer transcripts are trimmed in the middle (logged). */
 export const MAX_TRANSCRIPT_CHARS = 400_000;
@@ -19,6 +20,8 @@ export interface ReportInput {
   meetingStart: Date;
   attendees: string[];
   userName: string;
+  /** The account name when the user asked to be called something else (so it is not taken for another person). */
+  userAlsoKnownAs?: string | null;
   userEmail: string;
   timezone: string;
 }
@@ -126,7 +129,12 @@ export class ReportGeneratorService {
       attendees: input.attendees.join(', ') || 'unknown',
       outputLanguage: ai.outputLanguage,
     });
-    const contents: Content[] = [{ role: 'user', parts: [{ text: buildTranscriptMessage(lines) }] }];
+    const contents: Content[] = [
+      {
+        role: 'user',
+        parts: [{ text: buildTranscriptMessage(lines) + aliasNote(input.userName, input.userAlsoKnownAs) }],
+      },
+    ];
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { text, finishReason } = await this.gemini.generateJson({
