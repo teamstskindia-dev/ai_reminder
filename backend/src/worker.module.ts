@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from './core.module';
 import { RepeatableJobsService } from './infra/queue/repeatable-jobs.service';
+import { AuthSessionsRepository } from './modules/auth/auth-sessions.repository';
+import { SessionCleanupService } from './modules/auth/session-cleanup.service';
 import { AiModule } from './modules/ai/ai.module';
 import { AiProcessor } from './modules/ai/ai.processor';
 import { BotEventsModule } from './modules/bot/recall/bot-events.module';
@@ -47,6 +49,8 @@ import { UsersModule } from './modules/users/users.module';
     ReminderDispatchService,
     BroadcastDispatchService,
     DigestService,
+    AuthSessionsRepository,
+    SessionCleanupService,
     CalendarSyncProcessor,
     AiProcessor,
     NotificationsProcessor,

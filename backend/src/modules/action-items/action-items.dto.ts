@@ -1,7 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/pagination/pagination';
-import { IsDateTime, IsOptionalNonNull, IsOptionalNullable, ToBoolean } from '../../common/validation/validators';
+import {
+  IsDateTime,
+  IsNotBlank,
+  IsOptionalNonNull,
+  IsOptionalNullable,
+  ToBoolean,
+} from '../../common/validation/validators';
 
 export class ListActionItemsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ['open', 'done', 'dismissed', 'all'], default: 'open' })
@@ -26,6 +32,7 @@ export class ListActionItemsQueryDto extends PaginationQueryDto {
 
 export class CreateActionItemDto {
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   title: string;
 
@@ -56,6 +63,7 @@ export class CreateActionItemDto {
 export class UpdateActionItemDto {
   @IsOptionalNonNull()
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   title?: string;
 

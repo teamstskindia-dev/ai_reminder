@@ -28,4 +28,13 @@ export class RealtimeEmitter {
       this.logger.warn(`emit ${event} failed: ${(err as Error).message}`);
     }
   }
+
+  /** Closes every live socket of a user on every API instance (suspension, account deletion). */
+  disconnectUser(userId: string): void {
+    try {
+      this.emitter.in(userRoom(userId)).disconnectSockets(true);
+    } catch (err) {
+      this.logger.warn(`disconnecting sockets failed: ${(err as Error).message}`);
+    }
+  }
 }

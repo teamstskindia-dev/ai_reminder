@@ -12,16 +12,17 @@ which operators edit in the admin panel. See [Config-driven behaviour](#config-d
 ```bash
 cd mobile
 npm install
-cp .env.example .env          # then edit EXPO_PUBLIC_API_URL / EAS_PROJECT_ID
+cp .env.example .env          # production values: for a local backend set APP_ENV=development and
+                              # EXPO_PUBLIC_API_URL=http://localhost:4000 (see the table below)
 npx expo start                # press "i" for the iOS simulator, "a" for an Android emulator
 ```
 
 | Variable | Purpose |
 | -------- | ------- |
-| `EXPO_PUBLIC_API_URL` | Backend origin, e.g. `http://localhost:4000` (the app appends `/api/v1`). Inlined at bundle time — restart Metro after changing it. |
+| `EXPO_PUBLIC_API_URL` | Backend origin (the app appends `/api/v1`). Unset: `http://localhost:4000` in dev bundles, the production API in release bundles. `.env.example` ships the production origin; use `http://localhost:4000` (or your LAN IP) for a local backend. Inlined at bundle time — restart Metro after changing it. |
 | `EAS_PROJECT_ID` | Expo project id for Expo push tokens (`extra.eas.projectId`). Optional; push registration is skipped without it. |
-| `APP_ENV` | `development` (default for local runs) · `preview` · `production`. Set per EAS profile; only `development` allows plain-HTTP backends. |
-| `APP_BUILD_NUMBER` | Optional. Drives both the iOS `buildNumber` and Android `versionCode` (default `1`). The marketing version lives in `app.config.ts`. |
+| `APP_ENV` | `development` · `preview` · `production` (**default when unset**, so a local `expo prebuild` produces TestFlight-ready entitlements). EAS profiles set it explicitly. Only `development` allows plain-HTTP backends (cleartext on Android, local networking on iOS), so set `APP_ENV=development` before `npx expo run:ios` / `run:android` against a local backend. |
+| `APP_BUILD_NUMBER` | Optional. Drives both the iOS `buildNumber` and Android `versionCode` (default `2`). Raise it for every TestFlight / Play upload (`eas.json` uses `appVersionSource: local`). The marketing version lives in `app.config.ts`. |
 | `GOOGLE_SERVICES_JSON` | Optional path to `google-services.json` (FCM) for Android push. |
 
 Scripts: `npm run typecheck`, `npm run lint`, `npm run doctor`, `npm run export:ios`, `npm run export:android`.

@@ -44,6 +44,21 @@ export function IsDateTime(options?: ValidationOptions) {
   );
 }
 
+/**
+ * Rejects strings that are empty or only whitespace. Pair it with a length rule: `@Length(1, n)` alone lets
+ * `"   "` through, which becomes an empty title once the service trims it.
+ */
+export function IsNotBlank(options?: ValidationOptions) {
+  return (object: object, propertyName: string) =>
+    registerDecorator({
+      name: 'isNotBlank',
+      target: object.constructor,
+      propertyName,
+      options: { message: `${propertyName} must not be blank`, ...options },
+      validator: { validate: (value: unknown) => typeof value === 'string' && value.trim().length > 0 },
+    });
+}
+
 /** Query-string boolean: "true"/"1" → true, "false"/"0" → false. */
 export const ToBoolean = () =>
   Transform(({ value }: { value: unknown }) => {

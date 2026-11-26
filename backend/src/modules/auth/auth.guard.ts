@@ -8,6 +8,7 @@ import { AdminsRepository } from './admins.repository';
 import { COOKIES, extractAccessToken } from './auth-cookies.service';
 import { AUTH_META, AuthRequirement, hasRole } from './auth.decorators';
 import { TokenService } from './token.service';
+import { UserAccessBlocklist } from './user-access-blocklist';
 
 /**
  * Global guard driven by @UserAuth() / @AdminAuth(role) metadata (handler overrides class).
@@ -19,6 +20,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly tokens: TokenService,
     private readonly admins: AdminsRepository,
+    private readonly blocklist: UserAccessBlocklist,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -36,6 +38,10 @@ export class AuthGuard implements CanActivate {
       const token = extractAccessToken(req.headers, cookies, COOKIES.userAccess);
       if (!token) throw AppException.unauthorized();
       const payload = await this.tokens.verifyUser(token);
+      // Suspended or deleted since this token was issued.
+      if (await this.blocklist.isBlocked(payload.sub, payload.iat)) {
+        throw AppException.unauthorized('Your session has ended. Please sign in again.');
+      }
       req.user = { id: payload.sub };
       RequestContext.set({ userId: payload.sub });
       return true;

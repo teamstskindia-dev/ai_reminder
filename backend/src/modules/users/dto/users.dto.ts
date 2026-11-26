@@ -13,7 +13,13 @@ import {
   Min,
 } from 'class-validator';
 import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
-import { IsDateTime, IsOptionalNonNull, IsOptionalNullable, IsTimeZone } from '../../../common/validation/validators';
+import {
+  IsDateTime,
+  IsNotBlank,
+  IsOptionalNonNull,
+  IsOptionalNullable,
+  IsTimeZone,
+} from '../../../common/validation/validators';
 
 /** 24h local time, e.g. 07:30. */
 export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -22,6 +28,7 @@ export class UpdateMeDto {
   @ApiPropertyOptional({ example: 'Asha Rao' })
   @IsOptionalNonNull()
   @IsString()
+  @IsNotBlank()
   @Length(1, 120)
   name?: string;
 

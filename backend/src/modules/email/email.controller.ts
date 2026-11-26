@@ -37,7 +37,10 @@ export class EmailController {
 
   @Post('sync')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Check the inbox now' })
+  // Each run calls the mail provider and AI triage; the queue only de-duplicates while a run is pending.
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 6, ttl: 600_000 } })
+  @ApiOperation({ summary: 'Check the inbox now', description: 'At most 6 per user per 10 minutes.' })
   @ApiDataResponse(QueuedResult)
   @ApiErrors('CONFLICT')
   sync(@CurrentUserId() userId: string) {

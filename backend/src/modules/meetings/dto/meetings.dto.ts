@@ -4,7 +4,7 @@ import { IsBoolean, IsIn, IsOptional, IsString, Length, Matches, MaxLength } fro
 import { PaginationQueryDto } from '../../../common/pagination/pagination';
 import { MEETING_STATUSES } from '../../../common/types/api.types';
 import { IsMeetUrl, normalizeMeetUrl } from '../../../common/validation/safe-url';
-import { IsDateTime, IsOptionalNonNull } from '../../../common/validation/validators';
+import { IsDateTime, IsNotBlank, IsOptionalNonNull } from '../../../common/validation/validators';
 
 /** One status or a comma-separated list, e.g. `completed` or `scheduled,in_progress`. */
 export const STATUS_LIST_RE = new RegExp(`^(${MEETING_STATUSES.join('|')})(,(${MEETING_STATUSES.join('|')}))*$`);
@@ -49,6 +49,7 @@ export class ListMeetingsQueryDto extends PaginationQueryDto {
 export class CreateMeetingDto {
   @ApiProperty({ example: 'Weekly sync' })
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   title: string;
 
@@ -78,6 +79,7 @@ export class CreateMeetingDto {
 export class UpdateMeetingDto {
   @IsOptionalNonNull()
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   title?: string;
 
@@ -89,6 +91,7 @@ export class UpdateMeetingDto {
 /** Text fields of the multipart upload (the file goes in the `file` part). */
 export class UploadMeetingDto {
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   title: string;
 

@@ -3,6 +3,7 @@ import { validateSync } from 'class-validator';
 import { CreateActionItemDto } from '../../modules/action-items/action-items.dto';
 import { CreatePlanDto, UpdateMediaDto } from '../../modules/admin/dto/admin.dto';
 import { CreateMeetingDto, ListMeetingsQueryDto } from '../../modules/meetings/dto/meetings.dto';
+import { CreateReminderDto, UpdateReminderDto } from '../../modules/reminders/dto/reminders.dto';
 import { AppException } from '../errors/app.exception';
 import { MAX_PAGE } from '../pagination/pagination';
 import { createValidationPipe } from '../pipes/validation.pipe';
@@ -122,6 +123,18 @@ describe('request DTOs through the global ValidationPipe', () => {
       limits: { meetingsPerMonth: 10, aiQueriesPerDay: null, uploadMinutesPerMonth: null },
     });
     expect(full.fields).toEqual([]);
+  });
+
+  it('rejects whitespace-only titles (they would be saved as empty after trimming)', async () => {
+    expect(
+      (await validate(CreateMeetingDto, { ...meeting, startAt: '2026-11-03T10:00:00Z', title: '   ' })).fields,
+    ).toEqual(['title']);
+    expect((await validate(CreateActionItemDto, { title: '\t\n' })).fields).toEqual(['title']);
+    const reminder = { remindAt: '2099-01-01T09:00:00Z' };
+    expect((await validate(CreateReminderDto, { ...reminder, title: '  ' })).fields).toEqual(['title']);
+    expect((await validate(UpdateReminderDto, { title: ' ' })).fields).toEqual(['title']);
+    expect((await validate(UpdateReminderDto, {})).fields).toEqual([]);
+    expect((await validate(CreateReminderDto, { ...reminder, title: '  Call Ravi ' })).fields).toEqual([]);
   });
 
   it('requires media alt to be sent (null clears it)', async () => {

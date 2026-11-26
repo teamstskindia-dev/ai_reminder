@@ -13,6 +13,14 @@ export function sanitizeSearch(q: string | undefined | null, maxLength = 100): s
   return cleaned.length ? cleaned : null;
 }
 
+/**
+ * Escapes `\`, `%` and `_` so a value matches literally inside a SQL `LIKE`/`ILIKE` pattern (Postgres's default
+ * escape character is the backslash). Use it for any user- or AI-supplied text placed in a pattern.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
 /** Parses `field:asc|desc` against an allowlist. Returns the column (snake_case) and direction. */
 export function parseSort(
   sort: string | undefined,

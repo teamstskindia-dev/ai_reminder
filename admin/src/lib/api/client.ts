@@ -48,7 +48,14 @@ interface Envelope<T> {
 /** Never refresh in response to these (contract §0 Authentication). */
 const AUTH_PATHS = ['/admin/auth/login', '/admin/auth/refresh', '/admin/auth/logout'];
 
-let refreshPromise: Promise<boolean> | null = null;
+/**
+ * `expired`: the API refused the session (401/403), so the admin must sign in again.
+ * `unavailable`: the refresh could not be completed right now (offline, 5xx, 429, maintenance). The session may be
+ * fine, so the admin stays on the page (keeping unsaved edits) and sees the error instead of being sent to /login.
+ */
+type RefreshOutcome = { status: 'ok' } | { status: 'expired' } | { status: 'unavailable'; error: ApiError };
+
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 let redirecting = false;
 let sessionExpiredHandler: (() => void) | null = null;
 
@@ -58,7 +65,7 @@ export function setSessionExpiredHandler(handler: (() => void) | null): void {
 }
 
 /** One in-flight refresh shared by every concurrent caller. */
-function refreshSession(): Promise<boolean> {
+function refreshSession(): Promise<RefreshOutcome> {
   if (!refreshPromise) {
     logger.debug('refreshing admin session');
     refreshPromise = fetch(`${API_BASE}/admin/auth/refresh`, {
@@ -68,13 +75,18 @@ function refreshSession(): Promise<boolean> {
       body: '{}',
       cache: 'no-store',
     })
-      .then((res) => {
-        if (!res.ok) logger.warn('admin session refresh failed', { status: res.status });
-        return res.ok;
+      .then(async (res): Promise<RefreshOutcome> => {
+        if (res.ok) return { status: 'ok' };
+        logger.warn('admin session refresh failed', { status: res.status });
+        if (res.status === 401 || res.status === 403) return { status: 'expired' };
+        return { status: 'unavailable', error: await parseError(res) };
       })
-      .catch(() => {
+      .catch((): RefreshOutcome => {
         logger.warn('admin session refresh failed', { status: 0 });
-        return false;
+        return {
+          status: 'unavailable',
+          error: new ApiError({ status: 0, code: 'NETWORK_ERROR', message: 'Cannot reach the API. Check your connection.' }),
+        };
       })
       .finally(() => {
         // Allow a future refresh once this one has settled.
@@ -178,7 +190,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<E
     const error = await parseError(res.clone());
     // Cookie clients refresh on TOKEN_EXPIRED and UNAUTHORIZED (the browser drops the expired access cookie).
     if (error.code === 'TOKEN_EXPIRED' || error.code === 'UNAUTHORIZED') {
-      const refreshed = await refreshSession();
+      const outcome = await refreshSession();
+      if (outcome.status === 'unavailable') throw outcome.error; // not a sign-out: keep the page and its edits
+      const refreshed = outcome.status === 'ok';
       if (refreshed) {
         res = await send(path, options); // retried once; a 401 here is never refreshed again
       }

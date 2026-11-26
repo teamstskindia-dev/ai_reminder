@@ -68,5 +68,7 @@ export class AdminAdminsService {
     }
     await this.auth.revokeSessions(id, 'deleted');
     await this.admins.delete(id);
+    // Session rows keep IP addresses and user agents; nothing needs them once the admin is gone.
+    await this.prisma.authSession.deleteMany({ where: { subjectType: 'admin', subjectId: id } });
   }
 }

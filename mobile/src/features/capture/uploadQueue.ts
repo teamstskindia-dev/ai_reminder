@@ -12,7 +12,15 @@ import { reportError } from '@/utils/logger';
 import { toast } from '@/utils/toast';
 
 import { getActiveRecording } from './activeRecording';
-import { loadCaptures, partExists, removeCapture, upsertCapture, type LocalCapture } from './captureStore';
+import {
+  belongsTo,
+  contiguousParts,
+  loadCaptures,
+  partExists,
+  removeCapture,
+  upsertCapture,
+  type LocalCapture,
+} from './captureStore';
 
 /** Shorter recordings are "nothing to process" (matches the server's minimum). */
 export const MIN_CAPTURE_MS = 1500;
@@ -22,6 +30,8 @@ export const captureSent = createEmitter<{ clientId: string; captureId: string }
 
 let running = false;
 let again = false;
+/** The signed-in user whose recordings may be sent (set by useCaptureUploader). */
+let currentOwner: string | null = null;
 
 /** Waits longer after each failed attempt: 15 s, 30 s, 1 min … up to 10 minutes. */
 function isDue(c: LocalCapture): boolean {
@@ -36,8 +46,9 @@ function isPermanent(error: unknown): boolean {
   return error instanceof ApiError && [400, 404, 413, 415, 422].includes(error.status);
 }
 
-async function sendOne(initial: LocalCapture): Promise<void> {
-  let c: LocalCapture = { ...initial, state: 'uploading', lastError: null };
+async function sendOne(initial: LocalCapture, owner: string): Promise<void> {
+  // A recording from an older app version has no owner yet: it becomes the sending user's.
+  let c: LocalCapture = { ...initial, ownerId: initial.ownerId ?? owner, state: 'uploading', lastError: null };
   await upsertCapture(c);
   try {
     if (!c.serverId) {
@@ -92,11 +103,21 @@ async function runOnce(): Promise<void> {
   const net = await NetInfo.fetch();
   if (net.isConnected === false) return;
   if (!(await getAccessToken())) return;
+  const owner = currentOwner;
+  if (!owner) return;
   const active = getActiveRecording();
   const pending = (await loadCaptures()).filter(
-    (c) => c.clientId !== active && (c.state === 'queued' || c.state === 'uploading' || c.state === 'failed') && isDue(c),
+    (c) =>
+      c.clientId !== active &&
+      belongsTo(c, owner) &&
+      (c.state === 'queued' || c.state === 'uploading' || c.state === 'failed') &&
+      isDue(c),
   );
-  for (const c of pending) await sendOne(c);
+  for (const c of pending) {
+    // Stop if the user signed out (or another account signed in) mid-pass.
+    if (currentOwner !== owner) return;
+    await sendOne(c, owner);
+  }
 }
 
 /** Sends every recording waiting on the phone. Safe to call often; runs one pass at a time. */
@@ -121,7 +142,7 @@ export async function processCaptureQueue(): Promise<void> {
 /** Sends a recording again now (a failed one, from the Today card). */
 export async function retryLocalCapture(clientId: string): Promise<void> {
   const c = (await loadCaptures()).find((x) => x.clientId === clientId);
-  if (!c) return;
+  if (!c || !belongsTo(c, currentOwner)) return;
   await upsertCapture({ ...c, state: 'queued', permanent: false, attempts: 0 });
   await processCaptureQueue();
 }
@@ -132,9 +153,12 @@ export async function retryLocalCapture(clientId: string): Promise<void> {
  */
 async function recoverInterrupted(): Promise<void> {
   const active = getActiveRecording();
-  const stuck = (await loadCaptures()).filter((c) => c.state === 'recording' && c.clientId !== active);
+  const stuck = (await loadCaptures()).filter(
+    (c) => c.state === 'recording' && c.clientId !== active && belongsTo(c, currentOwner),
+  );
   for (const c of stuck) {
-    const parts = c.parts.filter((p) => partExists(p.uri));
+    // Keep 0..n up to the first missing file; later parts cannot be stitched on after a gap.
+    const parts = contiguousParts(c.parts.filter((p) => partExists(p.uri)));
     const durationMs = parts.reduce((sum, p) => sum + p.durationMs, 0);
     if (!parts.length || durationMs < MIN_CAPTURE_MS) {
       await removeCapture(c.clientId);
@@ -146,10 +170,14 @@ async function recoverInterrupted(): Promise<void> {
   }
 }
 
-/** Keeps the upload queue moving while signed in: on start, when back online, on resume, every minute. */
-export function useCaptureUploader(signedIn: boolean): void {
+/**
+ * Keeps the upload queue moving while signed in: on start, when back online, on resume, every minute.
+ * Only recordings made by `userId` are sent; nothing is sent until the user is known.
+ */
+export function useCaptureUploader(signedIn: boolean, userId: string | null): void {
   useEffect(() => {
-    if (!signedIn) return undefined;
+    currentOwner = signedIn ? userId : null;
+    if (!signedIn || !userId) return undefined;
     void recoverInterrupted().then(processCaptureQueue);
     const offNet = NetInfo.addEventListener((state) => {
       if (state.isConnected) void processCaptureQueue();
@@ -159,9 +187,10 @@ export function useCaptureUploader(signedIn: boolean): void {
     });
     const timer = setInterval(() => void processCaptureQueue(), 60_000);
     return () => {
+      currentOwner = null;
       offNet();
       appState.remove();
       clearInterval(timer);
     };
-  }, [signedIn]);
+  }, [signedIn, userId]);
 }

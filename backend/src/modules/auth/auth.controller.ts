@@ -5,6 +5,7 @@ import type { Response } from 'express';
 import { MaintenanceExempt } from '../../common/decorators/metadata.decorators';
 import { clientContext } from '../../common/http/request.types';
 import type { AppRequest } from '../../common/http/request.types';
+import { isSessionRejected } from '../../common/errors/app.exception';
 import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { MeResult, SignInResult, TokensResult } from '../users/dto/users.responses.dto';
 import { AuthCookiesService } from './auth-cookies.service';
@@ -130,18 +131,22 @@ export class AuthController {
     summary: 'Rotate the refresh token',
     description:
       'Mobile sends `refreshToken` in the body; the website relies on the `remi_rt` cookie. The old refresh token ' +
-      'stops working; reusing it revokes the whole session.',
+      'stops working; reusing it revokes the whole session. Cookies are rotated only for cookie sessions, and ' +
+      'cleared only when the session is rejected (401), never on a temporary failure.',
   })
   @ApiDataResponse(TokensResult)
   @ApiErrors('UNAUTHORIZED')
   async refresh(@Body() dto: RefreshTokenDto, @Req() req: AppRequest, @Res({ passthrough: true }) res: Response) {
+    // Mobile sends the token in the body and must never receive auth cookies (its HTTP stack may keep them).
+    const cookieSession = !dto.refreshToken;
     const token = dto.refreshToken ?? this.cookies.readRefresh(req, 'user');
     try {
       const tokens = await this.auth.refresh(token, clientContext(req));
-      this.cookies.set(res, 'user', tokens);
+      if (cookieSession) this.cookies.set(res, 'user', tokens);
       return { tokens };
     } catch (err) {
-      this.cookies.clear(res, 'user');
+      // A database or Redis hiccup must not sign the website out; only a rejected session does.
+      if (cookieSession && isSessionRejected(err)) this.cookies.clear(res, 'user');
       throw err;
     }
   }
