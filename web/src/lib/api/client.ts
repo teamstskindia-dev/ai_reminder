@@ -76,6 +76,15 @@ function statusToCode(status: number): ApiError["code"] {
   }
 }
 
+/** `Retry-After` as seconds: either a number of seconds or an HTTP date (RFC 9110 §10.2.3). */
+export function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? undefined : Math.max(0, Math.round((at - Date.now()) / 1000));
+}
+
 async function parseResponse<T>(res: Response): Promise<Envelope<T>> {
   if (res.status === 204) return { data: undefined as T };
 
@@ -90,8 +99,7 @@ async function parseResponse<T>(res: Response): Promise<Envelope<T>> {
   }
 
   if (!res.ok || isApiErrorBody(json)) {
-    const retryAfterHeader = res.headers.get("retry-after");
-    const retryAfter = retryAfterHeader ? Number(retryAfterHeader) || undefined : undefined;
+    const retryAfter = parseRetryAfter(res.headers.get("retry-after"));
     const requestId = res.headers.get("x-request-id") ?? undefined;
     if (isApiErrorBody(json)) throw ApiError.fromBody(json, res.status, { retryAfter, requestId });
     throw new ApiError({
@@ -140,14 +148,28 @@ async function send<T>(path: string, opts: RequestOptions): Promise<Envelope<T>>
 }
 
 // ----- single-flight refresh -----
-let refreshPromise: Promise<boolean> | null = null;
+/**
+ * `expired`: the API refused the session (401/403), so the user must sign in again.
+ * `unavailable`: the refresh could not be completed right now (offline, 5xx, 429, maintenance); the session may
+ * be fine, so the user stays signed in and sees the error instead of being sent to /login.
+ */
+export type RefreshOutcome = { status: "ok" } | { status: "expired" } | { status: "unavailable"; error: ApiError };
 
-/** Refresh the session once, de-duplicating concurrent callers. Resolves to `true` on success. */
-export function refreshSession(): Promise<boolean> {
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+
+function refreshFailure(error: unknown): RefreshOutcome {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return { status: "expired" };
+  const apiError =
+    error instanceof ApiError ? error : new ApiError({ code: "NETWORK_ERROR", status: 0, message: "Network error" });
+  return { status: "unavailable", error: apiError };
+}
+
+/** Refresh the session once, de-duplicating concurrent callers. */
+export function refreshSessionOutcome(): Promise<RefreshOutcome> {
   if (!refreshPromise) {
     refreshPromise = send<unknown>("/auth/refresh", { method: "POST", body: {}, skipAuthRefresh: true })
-      .then(() => true)
-      .catch(() => false)
+      .then((): RefreshOutcome => ({ status: "ok" }))
+      .catch(refreshFailure)
       .finally(() => {
         // Keep the resolved promise briefly so a burst of 401s shares it.
         setTimeout(() => {
@@ -156,6 +178,11 @@ export function refreshSession(): Promise<boolean> {
       });
   }
   return refreshPromise;
+}
+
+/** Refresh the session once. Resolves to `true` on success. */
+export async function refreshSession(): Promise<boolean> {
+  return (await refreshSessionOutcome()).status === "ok";
 }
 
 function shouldAttemptRefresh(error: ApiError, opts: RequestOptions): boolean {
@@ -172,8 +199,13 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     if (!(error instanceof ApiError)) throw error;
 
     if (shouldAttemptRefresh(error, opts)) {
-      const refreshed = await refreshSession();
-      if (refreshed) {
+      const outcome = await refreshSessionOutcome();
+      if (outcome.status === "unavailable") {
+        // Not a sign-out: surface the network/server error and let the next request try again.
+        if (outcome.error.code === "MAINTENANCE") maintenanceHandler?.(outcome.error);
+        throw outcome.error;
+      }
+      if (outcome.status === "ok") {
         try {
           return await send<T>(path, { ...opts, skipAuthRefresh: true });
         } catch (retryError) {
@@ -263,9 +295,14 @@ export async function upload<T>(path: string, form: FormData, opts: UploadOption
     return (await xhrUpload<T>(path, form, opts)).data;
   } catch (error) {
     if (error instanceof ApiError && shouldAttemptRefresh(error, {})) {
-      if (await refreshSession()) {
+      const outcome = await refreshSessionOutcome();
+      if (outcome.status === "ok") {
         opts.onProgress?.(0);
         return (await xhrUpload<T>(path, form, opts)).data;
+      }
+      if (outcome.status === "unavailable") {
+        if (outcome.error.code === "MAINTENANCE") maintenanceHandler?.(outcome.error);
+        throw outcome.error;
       }
       authFailureHandler?.(error);
     }

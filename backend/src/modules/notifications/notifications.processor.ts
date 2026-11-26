@@ -15,6 +15,7 @@ import {
   ReminderFollowUpJob,
   ReminderJob,
 } from '../../infra/queue/queue.constants';
+import { SessionCleanupService } from '../auth/session-cleanup.service';
 import { BroadcastDispatchService } from './broadcast-dispatch.service';
 import { DeliveryService } from './delivery.service';
 import { DigestService } from './digest.service';
@@ -74,11 +75,12 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJobData> 
   }
 }
 
-/** `digest` queue: hourly tick → one idempotent `digest-{yyyyMMddHH}` run per hour. */
+/** `digest` queue: hourly tick → one idempotent `digest-{yyyyMMddHH}` run per hour; daily `cleanup`. */
 @Processor(QUEUE.DIGEST)
 export class DigestProcessor extends BaseProcessor<Record<string, unknown>> {
   constructor(
     private readonly digest: DigestService,
+    private readonly cleanup: SessionCleanupService,
     @InjectQueue(QUEUE.DIGEST) private readonly queue: Queue,
   ) {
     super();
@@ -91,6 +93,7 @@ export class DigestProcessor extends BaseProcessor<Record<string, unknown>> {
       return { scheduled: res.added, hourKey };
     }
     if (job.name === JOB.DIGEST_RUN) return this.digest.run();
+    if (job.name === JOB.CLEANUP) return this.cleanup.run();
     throw new PermanentJobError(`Unknown digest job "${job.name}"`);
   }
 }

@@ -1,8 +1,10 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiFoundResponse, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Queue } from 'bullmq';
 import type { Response } from 'express';
+import { ThrottleByUser } from '../../common/decorators/metadata.decorators';
 import { AppException } from '../../common/errors/app.exception';
 import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { QueuedResult } from '../../common/swagger/common-results.dto';
@@ -42,10 +44,14 @@ export class IntegrationsController {
 
   @Post('google-calendar/sync')
   @HttpCode(200)
+  // Each run spends Google Calendar API quota; the queue only de-duplicates while a run is pending.
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 6, ttl: 600_000 } })
   @ApiOperation({
     summary: 'Sync Google Calendar now',
     description:
-      'Queues a sync. Fails with `FORBIDDEN` when calendar sync is disabled and `CONFLICT` when not connected.',
+      'Queues a sync. Fails with `FORBIDDEN` when calendar sync is disabled and `CONFLICT` when not connected. ' +
+      'At most 6 per user per 10 minutes.',
   })
   @ApiDataResponse(QueuedResult)
   @ApiErrors('FORBIDDEN', 'CONFLICT')

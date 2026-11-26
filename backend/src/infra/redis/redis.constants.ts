@@ -26,6 +26,10 @@ export const RedisKeys = {
   /** Keyed by sha256(email) so addresses never appear in key names. */
   emailCode: (emailHash: string) => `email-code:${emailHash}`,
   emailCodeRate: (emailHash: string) => `email-code-rate:${emailHash}`,
+  /** Verification attempts against the current code (atomic counter, reset when a new code is sent). */
+  emailCodeAttempts: (emailHash: string) => `email-code-attempts:${emailHash}`,
+  /** Unix seconds: user access tokens issued at or before this are rejected (suspension, deletion). */
+  userBlockedAt: (userId: string) => `user-blocked-at:${userId}`,
   loginFail: (kind: 'ip' | 'email', id: string) => `login-fail:${kind}:${id}`,
   loginLock: (kind: 'ip' | 'email', id: string) => `login-lock:${kind}:${id}`,
   botLeave: (meetingId: string) => `bot-leave:${meetingId}`,

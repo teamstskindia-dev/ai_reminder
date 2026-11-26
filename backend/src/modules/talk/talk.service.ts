@@ -16,12 +16,14 @@ import type {
   ToolProvider,
   ToolTaskResult,
 } from '../../common/types/api.types';
+import { escapeLike } from '../../common/utils/postgrest.util';
 import { renderTemplate, truncate } from '../../common/utils/template.util';
 import { formatDateTime, safeTimeZone } from '../../common/utils/time.util';
 import { GeminiBlockedError, GeminiService, parseJsonLoose } from '../../infra/gemini/gemini.service';
 import type { AssistantMessageRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { incrWithTtl } from '../../infra/redis/redis-counter';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import { EmbeddingService } from '../ai/embedding.service';
 import { PromptsRepository } from '../ai/prompts.repository';
@@ -938,12 +940,14 @@ export class TalkService {
   private async findEmail(userId: string, name: string): Promise<{ name: string | null; email: string } | null> {
     const q = name.trim().split(/\s+/)[0];
     if (!q || q.length < 2) return null;
+    // The name comes from speech via the AI: a stray % or _ must not match someone else's address.
+    const prefix = `${escapeLike(q)}%`;
     const rows = await this.prisma.$queryRaw<{ email: string; name: string | null }[]>(Prisma.sql`
       select a->>'email' as email, max(a->>'name') as name
         from public.meetings m, jsonb_array_elements(m.attendees) a
        where m.user_id = ${userId}::uuid
          and coalesce(a->>'email', '') <> ''
-         and ((a->>'name') ilike ${q + '%'} or split_part(a->>'email', '@', 1) ilike ${q + '%'})
+         and ((a->>'name') ilike ${prefix} or split_part(a->>'email', '@', 1) ilike ${prefix})
        group by a->>'email'
        order by count(*) desc
        limit 1`);
@@ -1153,8 +1157,7 @@ export class TalkService {
   private async consumeQuota(userId: string): Promise<string> {
     const key = RedisKeys.aiQuota(userId, new Date().toISOString().slice(0, 10));
     const limits = await this.users.planLimits(userId);
-    const used = await this.redis.incr(key);
-    if (used === 1) await this.redis.expire(key, 2 * 86_400);
+    const used = await incrWithTtl(this.redis, key, 2 * 86_400);
     if (limits.aiQueriesPerDay !== null && used > limits.aiQueriesPerDay) {
       await this.redis.decr(key);
       throw AppException.planLimit(

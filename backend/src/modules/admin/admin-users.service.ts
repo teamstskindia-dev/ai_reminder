@@ -16,6 +16,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { removeJob } from '../../infra/queue/job-utils';
 import { JobId, QUEUE } from '../../infra/queue/queue.constants';
 import { RefreshSessionService } from '../auth/refresh-session.service';
+import { UserAccessBlocklist } from '../auth/user-access-blocklist';
 import { toDevice } from '../devices/devices.repository';
 import { toMeetingDetail, toMeetingListItem, toTranscriptSegment } from '../meetings/meetings.mapper';
 import { MeetingsRepository, TranscriptRepository } from '../meetings/meetings.repository';
@@ -45,6 +46,7 @@ export class AdminUsersService {
     private readonly meetingsService: MeetingsService,
     private readonly deletion: AccountDeletionService,
     private readonly sessions: RefreshSessionService,
+    private readonly blocklist: UserAccessBlocklist,
     private readonly queues: QueueAdminService,
     @InjectQueue(QUEUE.MEETING_BOT) private readonly botQueue: Queue,
   ) {}
@@ -129,9 +131,10 @@ export class AdminUsersService {
     return this.userDetail(id);
   }
 
-  /** Suspension: revoke every session and cancel the user's scheduled bots. */
+  /** Suspension: revoke every session (and the access tokens already issued) and cancel scheduled bots. */
   private async suspendSideEffects(userId: string): Promise<void> {
     await this.sessions.revokeAll('user', userId);
+    await this.blocklist.block(userId);
     securityLog('user_sessions_revoked', { userId, reason: 'suspended' });
     const scheduled = await this.prisma.meeting.findMany({
       where: { userId, status: { in: ['scheduled', 'skipped'] }, botJobId: { not: null } },

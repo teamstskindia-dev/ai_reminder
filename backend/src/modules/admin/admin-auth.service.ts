@@ -7,6 +7,7 @@ import type { ClientContext } from '../../common/http/request.types';
 import { securityLog } from '../../common/logging/security-log';
 import type { AdminRole, AdminUser, AuthTokens } from '../../common/types/api.types';
 import type { AdminRow } from '../../infra/prisma/models';
+import { incrWithTtl } from '../../infra/redis/redis-counter';
 import { REDIS } from '../../infra/redis/redis.constants';
 import { AdminsRepository } from '../auth/admins.repository';
 import { RefreshSessionService } from '../auth/refresh-session.service';
@@ -38,11 +39,7 @@ export function hashPassword(password: string): Promise<string> {
 /** ioredis-backed store for LoginThrottle. */
 export function redisThrottleStore(redis: Redis): ThrottleStore {
   return {
-    async incrWithTtl(key, ttl) {
-      const n = await redis.incr(key);
-      if (n === 1) await redis.expire(key, ttl);
-      return n;
-    },
+    incrWithTtl: (key, ttl) => incrWithTtl(redis, key, ttl),
     async setWithTtl(key, value, ttl) {
       await redis.set(key, value, 'EX', ttl);
     },

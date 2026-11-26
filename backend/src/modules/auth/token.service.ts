@@ -11,6 +11,8 @@ export const ADMIN_AUDIENCE = 'remi-admin';
 export interface UserTokenPayload {
   sub: string;
   typ: 'user';
+  /** Issued-at (seconds), set by the signer. */
+  iat?: number;
 }
 
 export interface AdminTokenPayload {

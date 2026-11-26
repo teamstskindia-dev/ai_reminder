@@ -10,11 +10,12 @@ import { Card } from '@/components/ui/Card';
 import { Text } from '@/components/ui/Text';
 import { pick } from '@/features/setup/shared';
 import { useNow } from '@/hooks/useNow';
+import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 import { formatDuration } from '@/utils/format';
 
 import { getActiveRecording } from './activeRecording';
-import { removeCapture, useLocalCaptures, type LocalCapture } from './captureStore';
+import { belongsTo, removeCapture, useLocalCaptures, type LocalCapture } from './captureStore';
 import { retryLocalCapture } from './uploadQueue';
 
 /** Recordings worth a card on Today: still on the phone, processing, failed, or ready but not reviewed. */
@@ -137,7 +138,11 @@ function RemoteCard({ c, lang }: { c: CaptureListItem; lang: LanguageStyle }) {
 /** Today's recording cards (user-flow §04): sending/offline, processing, ready to review, failed. */
 export function CaptureCards({ lang }: { lang: LanguageStyle }) {
   const net = useNetInfo();
-  const local = useLocalCaptures().filter((c) => c.state !== 'recording' && c.clientId !== getActiveRecording());
+  const { user } = useAuth();
+  // Recordings another account left on this phone are never shown (or sent) here.
+  const local = useLocalCaptures().filter(
+    (c) => c.state !== 'recording' && c.clientId !== getActiveRecording() && belongsTo(c, user?.id),
+  );
   const remote = useCaptures();
   const now = useNow();
   const cards = (remote.data ?? []).filter(

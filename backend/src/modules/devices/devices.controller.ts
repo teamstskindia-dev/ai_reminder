@@ -4,7 +4,7 @@ import { AppException } from '../../common/errors/app.exception';
 import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
 import { CurrentUserId, UserAuth } from '../auth/auth.decorators';
 import { Device, EXPO_TOKEN_RE, RegisterDeviceDto } from './devices.dto';
-import { DevicesRepository, toDevice } from './devices.repository';
+import { DevicesRepository, MAX_DEVICES_PER_USER, toDevice } from './devices.repository';
 
 @ApiTags('devices')
 @UserAuth()
@@ -22,18 +22,20 @@ export class DevicesController {
   @Post()
   @ApiOperation({
     summary: 'Register (or refresh) this device for push notifications',
-    description: 'Idempotent: registering the same Expo push token again updates it and moves it to this user.',
+    description:
+      'Idempotent: registering the same Expo push token again updates it and moves it to this user. A user keeps ' +
+      `at most ${MAX_DEVICES_PER_USER} devices; registering another removes the least recently seen.`,
   })
   @ApiDataResponse(Device, { status: 201 })
   async register(@CurrentUserId() userId: string, @Body() dto: RegisterDeviceDto) {
-    return toDevice(
-      await this.devices.upsert(userId, {
-        expoPushToken: dto.expoPushToken,
-        platform: dto.platform,
-        deviceName: dto.deviceName ?? null,
-        appVersion: dto.appVersion ?? null,
-      }),
-    );
+    const device = await this.devices.upsert(userId, {
+      expoPushToken: dto.expoPushToken,
+      platform: dto.platform,
+      deviceName: dto.deviceName ?? null,
+      appVersion: dto.appVersion ?? null,
+    });
+    await this.devices.pruneForUser(userId);
+    return toDevice(device);
   }
 
   @Delete(':expoPushToken')

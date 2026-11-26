@@ -26,6 +26,11 @@ export class RepeatableJobsService implements OnApplicationBootstrap {
         { pattern: '0 * * * *' },
         { name: JOB.DIGEST_TICK, data: {} },
       );
+      await this.digestQueue.upsertJobScheduler(
+        'cleanup-daily',
+        { pattern: '30 3 * * *' },
+        { name: JOB.CLEANUP, data: {} },
+      );
       // Wake times and check-in times are "HH:MM", so the daily rhythm needs a finer tick than hourly.
       await this.companionQueue.upsertJobScheduler(
         'rhythm-5min',

@@ -107,12 +107,14 @@ export class CapturesController {
 
   @Post(':id/finish')
   @HttpCode(200)
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
   @ApiOperation({
     summary: 'Finish sending and start processing',
     description:
       'Checks that parts 0..partCount-1 are all uploaded, saves the title, length and bookmarks, and queues ' +
       'transcription (English and Hinglish), the summary and extraction. Calling it again is harmless. A ' +
-      '`capture_ready` notification follows; raw audio is deleted after processing.',
+      '`capture_ready` notification follows; raw audio is deleted after processing. At most 60 per user per hour.',
   })
   @ApiDataResponse(CaptureDetail)
   @ApiErrors('NOT_FOUND', 'CONFLICT')
@@ -174,7 +176,12 @@ export class CapturesController {
 
   @Post(':id/retry')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Process a failed recording again', description: 'The audio is kept after a failure.' })
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
+  @ApiOperation({
+    summary: 'Process a failed recording again',
+    description: 'The audio is kept after a failure. At most 10 per user per hour.',
+  })
   @ApiDataResponse(CaptureDetail)
   @ApiErrors('NOT_FOUND', 'CONFLICT')
   retry(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {

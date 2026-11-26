@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { CaptureBookmark } from '@/api/types';
+import { useAuth } from '@/providers/AuthProvider';
 import { haptics } from '@/utils/haptics';
 import { reportError } from '@/utils/logger';
 
@@ -53,6 +54,8 @@ function toLevel(db: number | undefined): number {
  */
 export function useCaptureRecorder(options: { onCheckIn: () => void }) {
   const recorder = useAudioRecorder(OPTIONS);
+  /** Stamped on the recording so only this account ever sends or shows it. */
+  const ownerId = useAuth().user?.id;
   const [phase, setPhase] = useState<RecorderPhase>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [levels, setLevels] = useState<number[]>([]);
@@ -150,6 +153,7 @@ export function useCaptureRecorder(options: { onCheckIn: () => void }) {
           state: 'recording',
           serverId: null,
           linkedMeetingId: linkedMeetingId ?? null,
+          ownerId: ownerId ?? null,
           attempts: 0,
           lastError: null,
           permanent: false,
@@ -173,7 +177,7 @@ export function useCaptureRecorder(options: { onCheckIn: () => void }) {
         return 'error';
       }
     },
-    [openPart],
+    [openPart, ownerId],
   );
 
   const pause = useCallback(() => {

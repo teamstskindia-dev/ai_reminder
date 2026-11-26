@@ -19,6 +19,7 @@ import { PushService } from '../../infra/push/push.service';
 import { upsertJob } from '../../infra/queue/job-utils';
 import { HeldPushJob, JOB, JobId, PushBundleJob, QUEUE } from '../../infra/queue/queue.constants';
 import { RealtimeEmitter } from '../../infra/realtime/realtime-emitter.service';
+import { incrWithTtl } from '../../infra/redis/redis-counter';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import { dayKey } from '../companion/rhythm.util';
 import { SettingsService } from '../content/settings.service';
@@ -241,9 +242,7 @@ export class DeliveryService {
   private async afterPush(userId: string, tz: string, budgeted: boolean): Promise<void> {
     const now = new Date();
     if (budgeted) {
-      const key = RedisKeys.pushBudget(userId, dayKey(now, tz));
-      await this.redis.incr(key);
-      await this.redis.expire(key, COUNTER_TTL_SECONDS);
+      await incrWithTtl(this.redis, RedisKeys.pushBudget(userId, dayKey(now, tz)), COUNTER_TTL_SECONDS);
     }
     await this.recordEngagement(userId, zonedParts(now, tz).hour, 0).catch(() => undefined);
   }

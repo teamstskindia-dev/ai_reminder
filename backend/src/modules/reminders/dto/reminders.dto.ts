@@ -17,7 +17,7 @@ import { Type } from 'class-transformer';
 import { PaginationQueryDto } from '../../../common/pagination/pagination';
 import { REMINDER_CHANNELS, type ReminderChannel } from '../../../common/types/api.types';
 import { ApiInteger } from '../../../common/swagger/api-docs.decorators';
-import { IsDateTime, IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
+import { IsDateTime, IsNotBlank, IsOptionalNonNull, IsOptionalNullable } from '../../../common/validation/validators';
 
 export class ListRemindersQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ['pending', 'sent', 'done', 'cancelled', 'all'], default: 'pending' })
@@ -36,6 +36,7 @@ export class ListRemindersQueryDto extends PaginationQueryDto {
 
 export class CreateReminderDto {
   @IsString()
+  @IsNotBlank()
   @Length(1, 200)
   title: string;
 
@@ -68,6 +69,7 @@ export class CreateReminderDto {
 export class UpdateReminderDto {
   @IsOptionalNonNull()
   @IsString()
+  @IsNotBlank()
   @Length(1, 200)
   title?: string;
 

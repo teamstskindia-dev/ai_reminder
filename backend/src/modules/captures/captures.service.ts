@@ -12,6 +12,7 @@ import { AiProcessJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constan
 import { StorageService } from '../../infra/storage/storage.service';
 import { NO_SPEECH_REASON } from '../ai/ai-pipeline.service';
 import { CaptureInsightsService, toCaptureInsights, toFollowUp } from '../ai/capture-insights.service';
+import { storedRecordingPaths } from '../../common/files/recording-files';
 import { toRecordingParts } from '../ai/transcription.service';
 import { CompanionChatService } from '../companion/companion-chat.service';
 import { toAttendees } from '../meetings/meetings.mapper';
@@ -372,9 +373,7 @@ export class CapturesService {
   async remove(userId: string, id: string): Promise<void> {
     const row = await this.findRow(userId, id);
     await removeJob(this.aiQueue, JobId.ai(id));
-    const paths = toRecordingParts(row.recordingParts).map((p) => p.path);
-    if (row.recordingPath) paths.push(row.recordingPath);
-    await this.storage.remove(paths);
+    await this.storage.remove(storedRecordingPaths(row));
     // Reminders keep meeting_id on delete (set null); cancel the ones still waiting so nothing fires later.
     await this.reminders.cancelMany(row.reminders.filter((r) => r.status === 'pending'));
     await this.prisma.meeting.delete({ where: { id } });

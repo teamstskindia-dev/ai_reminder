@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsISO8601, IsOptional, IsString, Length, MaxLength } from 'class-validator';
-import { IsOptionalNonNull, IsOptionalNullable } from '../../common/validation/validators';
+import { IsNotBlank, IsOptionalNonNull, IsOptionalNullable } from '../../common/validation/validators';
 import { ApiDateTime, ApiInteger } from '../../common/swagger/api-docs.decorators';
 import type * as Contract from '../../common/types/api.types';
 
@@ -50,12 +50,14 @@ export class FixNameDto {
 
 export class UpdateSummaryDto {
   @IsString()
+  @IsNotBlank()
   @Length(1, 20_000)
   summary: string;
 }
 
 export class UpdateSegmentDto {
   @IsString()
+  @IsNotBlank()
   @Length(1, 5000)
   text: string;
 }

@@ -38,6 +38,22 @@ export class AuthSessionsRepository implements AuthSessionsStore {
     await this.prisma.authSession.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: at } });
   }
 
+  /** Removes every session row of a subject (account deletion: the rows hold IP addresses and user agents). */
+  async deleteAllForSubject(subjectType: SubjectType, subjectId: string): Promise<number> {
+    const { count } = await this.prisma.authSession.deleteMany({ where: { subjectType, subjectId } });
+    return count;
+  }
+
+  /**
+   * Deletes up to `limit` sessions that expired before `before`. Returns how many were removed, so callers can
+   * loop in small batches instead of one long delete.
+   */
+  deleteExpiredBatch(before: Date, limit: number): Promise<number> {
+    return this.prisma.$executeRaw`
+      delete from public.auth_sessions
+       where id in (select id from public.auth_sessions where expires_at < ${before} limit ${limit})`;
+  }
+
   async revokeAllForSubject(subjectType: SubjectType, subjectId: string, at: Date): Promise<void> {
     await this.prisma.authSession.updateMany({
       where: { subjectType, subjectId, revokedAt: null },
