@@ -6,6 +6,9 @@ import { AppConfig } from '../../config/app-config';
 import { AppException } from '../../common/errors/app.exception';
 import { callExternal } from '../external/external-call';
 
+/** Supabase Storage accepts at most 1000 paths per remove call. */
+export const REMOVE_BATCH_SIZE = 1000;
+
 /**
  * Supabase Storage (service role, server only) for the private `recordings` bucket.
  * supabase-js is used exclusively for Storage; all database access goes through Prisma.
@@ -96,14 +99,34 @@ export class StorageService {
     });
   }
 
+  /**
+   * Deletes files, in batches of REMOVE_BATCH_SIZE with a timeout and retries per batch. Never throws: a
+   * failed batch is logged and the others still run, so a storage hiccup cannot block a meeting or account
+   * deletion.
+   */
   async remove(paths: string[]): Promise<void> {
-    if (!paths.length) return;
+    const unique = [...new Set(paths)];
+    if (!unique.length) return;
     if (this.localRoot) {
-      await Promise.all(paths.map((p) => rm(this.localPath(p), { force: true }).catch(() => undefined)));
+      await Promise.all(unique.map((p) => rm(this.localPath(p), { force: true }).catch(() => undefined)));
       return;
     }
     if (!this.client) return;
-    const { error } = await this.client.storage.from(this.bucket).remove(paths);
-    if (error) this.logger.warn({ provider: 'storage', files: paths.length }, 'could not delete stored files');
+    const bucket = this.client.storage.from(this.bucket);
+    let failed = 0;
+    for (let i = 0; i < unique.length; i += REMOVE_BATCH_SIZE) {
+      const batch = unique.slice(i, i + REMOVE_BATCH_SIZE);
+      try {
+        await callExternal({ provider: 'storage', operation: 'remove', retries: 2, timeoutMs: 30_000 }, async () => {
+          const { error } = await bucket.remove(batch);
+          if (error) throw error;
+        });
+      } catch {
+        failed += batch.length;
+      }
+    }
+    if (failed) {
+      this.logger.error({ provider: 'storage', files: unique.length, failed }, 'could not delete stored files');
+    }
   }
 }

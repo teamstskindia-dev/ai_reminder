@@ -206,6 +206,11 @@ export function errorMessage(err: unknown): string {
   }
 }
 
+/** The session itself was refused (401): the client must sign in again. Anything else may be temporary. */
+export function isSessionRejected(err: unknown): boolean {
+  return err instanceof AppException && err.getStatus() === 401;
+}
+
 /** "Outer: inner: root" message chain following `cause`, for logs only. */
 export function causeChain(err: unknown, max = 5): string[] {
   const out: string[] = [];

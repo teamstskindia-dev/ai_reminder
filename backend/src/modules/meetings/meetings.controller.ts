@@ -14,7 +14,9 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
+import { ThrottleByUser } from '../../common/decorators/metadata.decorators';
 import { MAX_AUDIO_BYTES } from '../../common/files/file-validation';
 import { ApiDataResponse, ApiErrors, ApiPaginatedResponse } from '../../common/swagger/api-docs.decorators';
 import { QueuedResult } from '../../common/swagger/common-results.dto';
@@ -44,11 +46,15 @@ export class MeetingsController {
   }
 
   @Post('upload')
+  // Each upload is buffered in memory and sent to the AI: bounded per user, not just per IP.
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 20, ttl: 3_600_000 } })
   @ApiOperation({
     summary: 'Upload a recording or transcript',
     description:
       'Audio (mp3, m4a, wav, webm, ogg; up to 200 MB) is transcribed by AI. A `.txt`/`.vtt`/`.srt` transcript ' +
-      '(up to 5 MB) is parsed directly. Either way the meeting is created and the AI report is queued.',
+      '(up to 5 MB) is parsed directly. Either way the meeting is created and the AI report is queued. ' +
+      'At most 20 uploads per user per hour.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -159,7 +165,12 @@ export class MeetingsController {
 
   @Post(':id/reprocess')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Regenerate the AI report from the transcript' })
+  @ThrottleByUser()
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
+  @ApiOperation({
+    summary: 'Regenerate the AI report from the transcript',
+    description: 'At most 10 per user per hour.',
+  })
   @ApiDataResponse(QueuedResult)
   @ApiErrors('NOT_FOUND', 'CONFLICT')
   reprocess(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {

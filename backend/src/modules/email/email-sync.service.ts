@@ -10,6 +10,7 @@ import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { upsertJob } from '../../infra/queue/job-utils';
 import { EmailBundleJob, EmailSyncJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constants';
+import { incrWithTtl } from '../../infra/redis/redis-counter';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import { CompanionContextService } from '../companion/companion-context.service';
 import { ConnectionsService, ReconnectRequiredError } from '../connections/connections.service';
@@ -203,8 +204,7 @@ export class EmailSyncService {
     for (const r of urgent) {
       const isVip = senderMatches(user.settings.vipSenders, r.fromEmail);
       const countKey = RedisKeys.emailPushes(account.userId, hourKey);
-      const count = await this.redis.incr(countKey);
-      if (count === 1) await this.redis.expire(countKey, 2 * 3600);
+      const count = await incrWithTtl(this.redis, countKey, 2 * 3600);
       if (count > EMAIL_PUSHES_PER_HOUR && !isVip) {
         await this.queueBundle(account.userId, hourKey);
         continue;
@@ -236,8 +236,7 @@ export class EmailSyncService {
 
   private async queueBundle(userId: string, hourKey: string): Promise<void> {
     const heldKey = RedisKeys.emailHeld(userId, hourKey);
-    const held = await this.redis.incr(heldKey);
-    if (held === 1) await this.redis.expire(heldKey, 3 * 3600);
+    await incrWithTtl(this.redis, heldKey, 3 * 3600);
     const release = nextHour(new Date());
     await upsertJob<EmailBundleJob>(
       this.queue,

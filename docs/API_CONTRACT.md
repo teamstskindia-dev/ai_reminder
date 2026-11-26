@@ -83,9 +83,17 @@ The API reads the access token from the `Authorization` header first and falls b
 When the access token expires the API returns `401` with `error.code = 'TOKEN_EXPIRED'`; when no token is present it
 returns `401` with `UNAUTHORIZED`. Cookie clients (web, admin) see `UNAUTHORIZED` after expiry, because the browser
 drops the 15-minute access cookie, so **clients refresh on either code**: call the refresh endpoint once, then retry the
-original request once. If the refresh fails, the client signs the user out. Never refresh in response to the refresh,
-exchange, login or logout endpoints themselves, or to a retried request.
+original request once. If the refresh is **rejected** (`401`/`403`), the client signs the user out. If it merely
+**could not complete** (network error, `429`, `5xx`, `503 MAINTENANCE`), the client keeps the session, shows that error
+and lets a later request try again; it never signs the user out for a temporary failure. Never refresh in response to
+the refresh, exchange, login or logout endpoints themselves, or to a retried request.
 Clients must de-duplicate concurrent refreshes (one in-flight refresh promise).
+
+The refresh endpoints rotate cookies only for cookie sessions (no `refreshToken` in the body) and clear them only when
+the session is rejected (`401`). Mobile, which sends the token in the body, never receives auth cookies.
+
+Suspending or deleting a user ends their session at once: access tokens issued before that moment are refused with
+`401` (not only once they expire), and the refresh token is revoked.
 
 Cookie attributes: `HttpOnly; SameSite=Lax; Path=/; Secure` (in production); `Domain=COOKIE_DOMAIN` when set.
 Access cookie max-age is 15 min; refresh cookie max-age is 30 days.
@@ -97,7 +105,24 @@ When `app.maintenanceMode` is true, every non-admin, non-public endpoint returns
 
 ### Rate limits
 
-`429` with code `RATE_LIMITED` and a `Retry-After` header.
+`429` with code `RATE_LIMITED` and a `Retry-After` header (seconds; clients also accept an HTTP date).
+
+The default is 120 requests per minute per IP. Endpoints that start expensive work have their own limits, counted
+**per user**:
+
+| Endpoint | Limit per user |
+|----------|----------------|
+| `POST /meetings/upload` | 20 per hour |
+| `POST /meetings/:id/reprocess` | 10 per hour |
+| `POST /captures/:id/finish` | 60 per hour |
+| `POST /captures/:id/retry` | 10 per hour |
+| `POST /email/sync`, `POST /integrations/google-calendar/sync` | 6 per 10 minutes |
+
+### Text fields
+
+Required text such as titles (meetings, uploads, action items, reminders), the profile name, Memory edits (summary,
+transcript line) and an approved email's subject and body must contain at least one non-space character:
+whitespace-only values fail with `VALIDATION_ERROR`.
 
 ---
 
@@ -809,7 +834,7 @@ single use) and verifies it at exchange. A failed verification consumes the code
 | POST | `/auth/apple` | `{ identityToken: string; givenName?: string; familyName?: string }` (iOS Sign in with Apple; Apple sends the name only the first time) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. The token is verified against Apple's keys (issuer, audience in `APPLE_CLIENT_IDS`, expiry). Links to an existing account by Apple id, or by email when Apple marks it verified. |
 | POST | `/auth/email/start` | `{ email: string }` | `204`. Emails a 6-digit code (10 min, single use, max 5 per address per hour). Without SMTP outside production the code is printed in the API log. `429 RATE_LIMITED` when too many codes were requested. |
 | POST | `/auth/email/verify` | `{ email: string; code: string }` (6 digits) | `{ user: User; tokens: AuthTokens; isNewUser: boolean }`. Creates the account on first sign-in (unless sign-ups are paused → `403`). 5 wrong attempts invalidate the code (`401`). |
-| POST | `/auth/refresh` | `{ refreshToken?: string }` (mobile sends body; web relies on the `remi_rt` cookie) | `{ tokens: AuthTokens }` (+ rotated cookies) |
+| POST | `/auth/refresh` | `{ refreshToken?: string }` (mobile sends body; web relies on the `remi_rt` cookie) | `{ tokens: AuthTokens }` (+ rotated cookies for cookie sessions only) |
 | POST | `/auth/logout` | `{ refreshToken?: string }` | `204`; revokes the session and clears cookies |
 | GET | `/auth/me` | — | `{ user: User; settings: UserSettings }` |
 
@@ -1061,7 +1086,7 @@ interface DataExportStatus { status: 'none' | 'preparing' | 'ready'; url: string
 | Method | Path | Body | Response `data` |
 |--------|------|------|-----------------|
 | GET | `/devices` | — | `Device[]` |
-| POST | `/devices` | `{ expoPushToken: string; platform: 'android'\|'ios'; deviceName?: string; appVersion?: string }` (upsert by token) | `Device` |
+| POST | `/devices` | `{ expoPushToken: string; platform: 'android'\|'ios'; deviceName?: string; appVersion?: string }` (upsert by token; a user keeps at most 10 devices, the least recently seen is dropped) | `Device` |
 | DELETE | `/devices/:expoPushToken` | — | `204` |
 
 ### Ask AI

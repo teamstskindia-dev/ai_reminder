@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UpstreamError } from '../../common/errors/app.exception';
+import type { RecordingPart } from '../../common/files/recording-files';
 import { renderTemplate } from '../../common/utils/template.util';
 import { callExternal } from '../../infra/external/external-call';
 import { GeminiService, parseJsonLoose } from '../../infra/gemini/gemini.service';
@@ -10,6 +11,8 @@ import type { SegmentInput } from '../meetings/meetings.repository';
 import { PromptsRepository } from './prompts.repository';
 import { TRANSCRIPTION_RESPONSE_SCHEMA, transcriptionOutputSchema } from './report.schema';
 
+export { toRecordingParts, type RecordingPart } from '../../common/files/recording-files';
+
 export const AUDIO_MIME_BY_EXT: Record<string, string> = {
   mp3: 'audio/mpeg',
   m4a: 'audio/mp4',
@@ -17,29 +20,6 @@ export const AUDIO_MIME_BY_EXT: Record<string, string> = {
   webm: 'audio/webm',
   ogg: 'audio/ogg',
 };
-
-/** One uploaded part of a capture, in recording order. */
-export interface RecordingPart {
-  index: number;
-  path: string;
-  durationMs: number;
-  bytes?: number;
-}
-
-/** Reads `meetings.recording_parts` defensively (it is JSON). */
-export function toRecordingParts(raw: unknown): RecordingPart[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-    .filter((p) => typeof p.path === 'string' && Number.isInteger(p.index))
-    .map((p) => ({
-      index: p.index as number,
-      path: p.path as string,
-      durationMs: typeof p.durationMs === 'number' && p.durationMs > 0 ? Math.round(p.durationMs) : 0,
-      bytes: typeof p.bytes === 'number' ? p.bytes : undefined,
-    }))
-    .sort((a, b) => a.index - b.index);
-}
 
 /**
  * Joins per-part transcripts into one: each part's times are shifted by the duration of the parts before

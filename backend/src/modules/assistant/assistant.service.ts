@@ -10,6 +10,7 @@ import { GeminiBlockedError, GeminiService } from '../../infra/gemini/gemini.ser
 import type { AssistantMessageRow, AssistantThreadRow } from '../../infra/prisma/models';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { incrWithTtl } from '../../infra/redis/redis-counter';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import { EmbeddingService } from '../ai/embedding.service';
 import { PromptsRepository } from '../ai/prompts.repository';
@@ -181,8 +182,7 @@ export class AssistantService {
   private async consumeQuota(userId: string): Promise<string> {
     const key = RedisKeys.aiQuota(userId, new Date().toISOString().slice(0, 10));
     const limits = await this.users.planLimits(userId);
-    const used = await this.redis.incr(key);
-    if (used === 1) await this.redis.expire(key, 2 * 86_400);
+    const used = await incrWithTtl(this.redis, key, 2 * 86_400);
     if (limits.aiQueriesPerDay !== null && used > limits.aiQueriesPerDay) {
       await this.redis.decr(key);
       throw AppException.planLimit(

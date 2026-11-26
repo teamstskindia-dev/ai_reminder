@@ -3,6 +3,7 @@ import { ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { MaintenanceExempt } from '../../common/decorators/metadata.decorators';
+import { isSessionRejected } from '../../common/errors/app.exception';
 import { clientContext } from '../../common/http/request.types';
 import type { AppRequest } from '../../common/http/request.types';
 import { ApiDataResponse, ApiErrors } from '../../common/swagger/api-docs.decorators';
@@ -51,15 +52,17 @@ export class AdminAuthController {
   @ApiDataResponse(AdminTokensResult)
   @ApiErrors('UNAUTHORIZED')
   async refresh(@Body() dto: AdminRefreshDto, @Req() req: AppRequest, @Res({ passthrough: true }) res: Response) {
+    const cookieSession = !dto.refreshToken;
     try {
       const tokens = await this.auth.refresh(
         dto.refreshToken ?? this.cookies.readRefresh(req, 'admin'),
         clientContext(req),
       );
-      this.cookies.set(res, 'admin', tokens);
+      if (cookieSession) this.cookies.set(res, 'admin', tokens);
       return { tokens };
     } catch (err) {
-      this.cookies.clear(res, 'admin');
+      // Only a rejected session clears the cookies; a temporary failure must not sign the admin out.
+      if (cookieSession && isSessionRejected(err)) this.cookies.clear(res, 'admin');
       throw err;
     }
   }

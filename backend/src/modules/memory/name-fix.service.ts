@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/errors/app.exception';
+import { escapeLike } from '../../common/utils/postgrest.util';
 import type { NameCorrection } from '../../common/types/api.types';
 import { Prisma } from '../../infra/prisma/models';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -22,11 +23,6 @@ function deepReplace(value: unknown, from: string, to: string): unknown {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, deepReplace(v, from, to)]));
   }
   return value;
-}
-
-/** Escapes LIKE wildcards so a name is matched literally. */
-function likeLiteral(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 const MAX_CONVERSATIONS = 200;
@@ -145,7 +141,7 @@ export class NameFixService {
 
   /** The user's finished conversations where the name appears (speaker, participant or summary). */
   private async conversationsWith(userId: string, name: string): Promise<string[]> {
-    const like = `%${likeLiteral(name)}%`;
+    const like = `%${escapeLike(name)}%`;
     const rows = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       select m.id from public.meetings m
        where m.user_id = ${userId}::uuid and m.status = 'completed'

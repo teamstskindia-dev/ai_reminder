@@ -50,9 +50,24 @@ export function useRealtime(enabled: boolean) {
         void qc.invalidateQueries({ queryKey: qk.dashboard });
       }
     });
+    // One refresh-and-reconnect per successful connection, so a server that keeps rejecting us
+    // cannot drive an endless refresh loop.
+    let authRetryUsed = false;
+    let disposed = false;
+    socket.on('connect', () => {
+      authRetryUsed = false;
+    });
     socket.on('connect_error', (error) => {
       logger.debug('Realtime connect error', { reason: error.message });
-      if (/expired|unauthor/i.test(error.message)) void refreshSession().catch(() => null);
+      if (!/expired|unauthor/i.test(error.message) || authRetryUsed) return;
+      authRetryUsed = true;
+      // A server-side (middleware) rejection stops Socket.IO's automatic reconnection, so after the
+      // refresh we reconnect by hand. The `auth` callback above reads the new token on connect.
+      void refreshSession()
+        .then((token) => {
+          if (token && !disposed && !socket.active && AppState.currentState === 'active') socket.connect();
+        })
+        .catch(() => null);
     });
 
     socket.connect();
@@ -62,6 +77,7 @@ export function useRealtime(enabled: boolean) {
     });
 
     return () => {
+      disposed = true;
       sub.remove();
       socket.removeAllListeners();
       socket.disconnect();

@@ -28,9 +28,12 @@ interface MultipartOptions {
  * streamed from its URI, so large recordings never load into JS memory.
  */
 function send<T>(path: string, options: MultipartOptions, token: string | null): Promise<T> {
+  // Built fresh on every attempt (including the retry after a 401): a new FormData and a new file
+  // part pointing at the file URI, so the retry never reuses a body the first request already consumed.
   const form = new FormData();
   for (const [key, value] of Object.entries(options.fields ?? {})) form.append(key, String(value));
-  form.append('file', options.file as unknown as Blob);
+  const filePart: MultipartFile = { uri: options.file.uri, name: options.file.name, type: options.file.type };
+  form.append('file', filePart as unknown as Blob);
 
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();

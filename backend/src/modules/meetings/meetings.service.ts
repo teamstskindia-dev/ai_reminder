@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { AppException, causeChain } from '../../common/errors/app.exception';
+import { storedRecordingPaths } from '../../common/files/recording-files';
 import { Paginated } from '../../common/pagination/pagination';
 import type { MeetingDetail, MeetingListItem, TranscriptSegment } from '../../common/types/api.types';
 import { isJoinableMeetUrl } from '../../common/validation/safe-url';
@@ -103,7 +104,8 @@ export class MeetingsService {
     }
     await this.scheduler.unscheduleMeeting(meeting);
     await removeJob(this.aiQueue, JobId.ai(id));
-    if (meeting.recordingPath) await this.storage.remove([meeting.recordingPath]);
+    // Captures keep their audio as parts until processed: remove those as well as an uploaded recording.
+    await this.storage.remove(storedRecordingPaths(meeting));
     await this.meetings.delete(id);
   }
 

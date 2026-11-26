@@ -12,7 +12,10 @@ const BUILD_NUMBER = Number(process.env.APP_BUILD_NUMBER ?? 2);
 
 const BRAND_PRIMARY = '#5B4FE9';
 
-/** development | preview | production — set per EAS build profile (eas.json). Local runs default to development. */
+/**
+ * development | preview | production — set per EAS build profile (eas.json). Defaults to production when unset, so a
+ * local `expo prebuild` / Xcode archive is release-ready; set APP_ENV=development for a plain-HTTP local backend.
+ */
 const APP_ENV = (process.env.APP_ENV ?? 'production').trim();
 const IS_DEV = APP_ENV === 'development';
 

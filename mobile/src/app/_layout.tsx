@@ -82,7 +82,7 @@ function AppGate() {
 function RootNavigator() {
   const theme = useTheme();
   const { config, isEnabled } = useConfig();
-  const { status, settings, needsSetup, userResolved } = useAuth();
+  const { status, settings, needsSetup, userResolved, user } = useAuth();
   const { seen: onboardingSeen } = useOnboarding();
   const signedIn = status === 'signedIn';
   const inApp = signedIn && !needsSetup;
@@ -100,7 +100,7 @@ function RootNavigator() {
   useAppBadge(signedIn);
   useRealtime(signedIn);
   // Sends recorded conversations waiting on the phone (offline queue, crash recovery).
-  useCaptureUploader(inApp);
+  useCaptureUploader(inApp, user?.id ?? null);
 
   return (
     <>

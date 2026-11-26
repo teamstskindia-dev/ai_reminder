@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsISO8601, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/pagination/pagination';
+import { IsNotBlank } from '../../common/validation/validators';
 import { ApiDateTime, ApiInteger, ApiUuid } from '../../common/swagger/api-docs.decorators';
 import type * as Contract from '../../common/types/api.types';
 
@@ -71,11 +72,13 @@ export class EmailSendDto {
 
   @ApiProperty({ maxLength: 300 })
   @IsString()
+  @IsNotBlank()
   @Length(1, 300)
   subject: string;
 
   @ApiProperty({ maxLength: 10000 })
   @IsString()
+  @IsNotBlank()
   @Length(1, 10000)
   body: string;
 }

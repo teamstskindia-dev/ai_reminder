@@ -25,6 +25,8 @@ export const JOB = {
   BROADCAST: 'broadcast',
   DIGEST_TICK: 'tick',
   DIGEST_RUN: 'run',
+  /** Daily housekeeping on the digest queue (prunes expired auth sessions). */
+  CLEANUP: 'cleanup',
   RECALL_EVENT: 'recall-event',
   REMINDER_FOLLOWUP: 'reminder-followup',
   RHYTHM_TICK: 'rhythm-tick',

@@ -4,6 +4,7 @@ import type { Namespace, Socket } from 'socket.io';
 import { REALTIME_NAMESPACE, userRoom } from '../../infra/realtime/realtime-emitter.service';
 import { COOKIES, parseCookieHeader } from '../auth/auth-cookies.service';
 import { TokenService } from '../auth/token.service';
+import { UserAccessBlocklist } from '../auth/user-access-blocklist';
 
 /**
  * Socket.IO `/realtime` namespace (server → client only). The handshake must carry a valid user
@@ -15,7 +16,10 @@ import { TokenService } from '../auth/token.service';
 export class RealtimeGateway implements OnGatewayInit {
   private readonly logger = new Logger(RealtimeGateway.name);
 
-  constructor(private readonly tokens: TokenService) {}
+  constructor(
+    private readonly tokens: TokenService,
+    private readonly blocklist: UserAccessBlocklist,
+  ) {}
 
   afterInit(nsp: Namespace): void {
     nsp.use((socket, next) => {
@@ -36,6 +40,7 @@ export class RealtimeGateway implements OnGatewayInit {
 
     const payload = await this.tokens.verifyUser(token);
     const userId = payload.sub;
+    if (await this.blocklist.isBlocked(userId, payload.iat)) throw new Error('blocked');
     (socket.data as { userId?: string }).userId = userId;
     await socket.join(userRoom(userId));
     const exp = (payload as { exp?: number }).exp;

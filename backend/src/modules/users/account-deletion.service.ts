@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { AppConfig } from '../../config/app-config';
 import { causeChain } from '../../common/errors/app.exception';
+import { storedRecordingPaths } from '../../common/files/recording-files';
 import { decryptString } from '../../common/utils/crypto.util';
 import { escapeHtml, renderTemplate } from '../../common/utils/template.util';
 import { MailService } from '../../infra/mail/mail.service';
@@ -14,10 +15,15 @@ import { JobId, QUEUE } from '../../infra/queue/queue.constants';
 import { REDIS, RedisKeys } from '../../infra/redis/redis.constants';
 import { StorageService } from '../../infra/storage/storage.service';
 import { AuthSessionsRepository } from '../auth/auth-sessions.repository';
+import { UserAccessBlocklist } from '../auth/user-access-blocklist';
 import { SettingsService } from '../content/settings.service';
 import { GoogleAccountsRepository, UsersRepository } from './users.repository';
 
-/** Deletes a user and everything they own (DB cascade), plus queued jobs, stored files and Google grants. */
+/**
+ * Deletes a user and everything they own (DB cascade), plus queued jobs, stored files (recordings and capture
+ * audio parts), a pending data export, sign-in sessions (they hold IP addresses and user agents) and Google
+ * grants, then sends the goodbye email. Access tokens already issued stop working at once.
+ */
 @Injectable()
 export class AccountDeletionService {
   private readonly logger = new Logger(AccountDeletionService.name);
@@ -26,6 +32,7 @@ export class AccountDeletionService {
     private readonly users: UsersRepository,
     private readonly google: GoogleAccountsRepository,
     private readonly sessions: AuthSessionsRepository,
+    private readonly blocklist: UserAccessBlocklist,
     private readonly googleOAuth: GoogleOAuthService,
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
@@ -42,6 +49,8 @@ export class AccountDeletionService {
   async deleteUser(userId: string): Promise<void> {
     const user = await this.users.getById(userId);
     const profile = await this.prisma.userProfile.findUnique({ where: { userId }, select: { preferredName: true } });
+    // Before anything is removed, so nothing the user still holds can act on the account meanwhile.
+    await this.blocklist.block(userId);
 
     const account = await this.google.find(userId);
     if (account?.refreshTokenEnc) {
@@ -54,7 +63,7 @@ export class AccountDeletionService {
 
     const meetings = await this.prisma.meeting.findMany({
       where: { userId },
-      select: { id: true, status: true, recordingPath: true },
+      select: { id: true, status: true, recordingPath: true, recordingParts: true },
     });
     for (const m of meetings) {
       await removeJob(this.botQueue, JobId.bot(m.id));
@@ -83,13 +92,12 @@ export class AccountDeletionService {
       }
       await this.redis.del(RedisKeys.dataExport(userId));
     }
-    await this.storage.remove([
-      ...meetings.map((m) => m.recordingPath).filter((p): p is string => !!p),
-      ...exportPaths,
-    ]);
-    await this.sessions.revokeAllForSubject('user', userId, new Date());
+    // Recordings and capture audio parts (kept until processed, or for good if processing failed).
+    const files = [...meetings.flatMap((m) => storedRecordingPaths(m)), ...exportPaths];
+    await this.storage.remove(files);
+    const sessions = await this.sessions.deleteAllForSubject('user', userId);
     await this.users.delete(userId);
-    this.logger.log(`Deleted user ${userId}`);
+    this.logger.log({ userId, meetings: meetings.length, files: files.length, sessions }, 'user deleted');
     await this.sendGoodbye(user.email, profile?.preferredName ?? user.name?.split(' ')[0] ?? null);
   }
 

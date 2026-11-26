@@ -36,6 +36,12 @@ export interface LocalCapture {
   serverId: string | null;
   /** The calendar meeting this recording belongs to (record prompt, quick notes). */
   linkedMeetingId?: string | null;
+  /**
+   * The signed-in user who recorded it. Only that user's session ever uploads or shows it, so a recording made
+   * offline by one account is never sent into another account that signs in later on the same phone.
+   * Missing on recordings saved by older app versions (claimed by the first account that sends them).
+   */
+  ownerId?: string | null;
   attempts: number;
   lastError: string | null;
   /** A permanent problem (the server refused it); retrying will not help. */
@@ -121,6 +127,26 @@ function deleteCaptureFiles(clientId: string): void {
   } catch (error) {
     reportError(error, { source: 'capture-delete-dir' });
   }
+}
+
+/** True when the recording belongs to this user (or predates owner tracking). */
+export function belongsTo(capture: Pick<LocalCapture, 'ownerId'>, userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  return !capture.ownerId || capture.ownerId === userId;
+}
+
+/**
+ * The parts that can be sent as one recording: 0, 1, 2… up to the first gap. The server requires parts
+ * 0..partCount-1, so a gap (a file lost in a crash) would otherwise fail every attempt to finish.
+ */
+export function contiguousParts(parts: LocalPart[]): LocalPart[] {
+  const sorted = [...parts].sort((a, b) => a.index - b.index);
+  const out: LocalPart[] = [];
+  for (const part of sorted) {
+    if (part.index !== out.length) break;
+    out.push(part);
+  }
+  return out;
 }
 
 /** Live list of recordings still on the phone (newest first). */

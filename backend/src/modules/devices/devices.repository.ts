@@ -13,6 +13,9 @@ export function toDevice(row: DeviceRow): Device {
   };
 }
 
+/** Push devices kept per user; registering one more drops the least recently seen. */
+export const MAX_DEVICES_PER_USER = 10;
+
 @Injectable()
 export class DevicesRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -37,6 +40,22 @@ export class DevicesRepository {
       create: { ...data, userId, lastSeenAt: now },
       update: { ...data, userId, lastSeenAt: now },
     });
+  }
+
+  /**
+   * Keeps only the `keep` most recently seen devices of a user. Bounds every push fan-out and the table, since
+   * a client can register any number of well-formed tokens.
+   */
+  async pruneForUser(userId: string, keep: number = MAX_DEVICES_PER_USER): Promise<number> {
+    const stale = await this.prisma.device.findMany({
+      where: { userId },
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'asc' }],
+      skip: keep,
+      select: { id: true },
+    });
+    if (!stale.length) return 0;
+    const { count } = await this.prisma.device.deleteMany({ where: { id: { in: stale.map((d) => d.id) } } });
+    return count;
   }
 
   async deleteForUser(userId: string, expoPushToken: string): Promise<number> {
