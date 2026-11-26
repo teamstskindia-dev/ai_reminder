@@ -71,17 +71,23 @@ export function parseAuthResultUrl(url: string): { code: string | null; error: s
 
 // ---------- PKCE attempt (memory only; never persisted or logged) ----------
 const ATTEMPT_TTL_MS = 10 * 60_000;
-let pendingAttempt: { verifier: string; startedAt: number } | null = null;
+/**
+ * After an Android "dismiss", the redirect (if any) reaches the router within seconds, so the verifier
+ * only needs to live a short while longer, not the full attempt TTL.
+ */
+const DISMISS_GRACE_MS = 60_000;
+let pendingAttempt: { verifier: string; expiresAt: number } | null = null;
 
 function takeVerifier(): string | null {
   const attempt = pendingAttempt;
   pendingAttempt = null;
-  if (!attempt || Date.now() - attempt.startedAt > ATTEMPT_TTL_MS) return null;
+  if (!attempt || Date.now() > attempt.expiresAt) return null;
   return attempt.verifier;
 }
 
 export function hasPendingSignIn(): boolean {
-  return pendingAttempt !== null && Date.now() - pendingAttempt.startedAt <= ATTEMPT_TTL_MS;
+  if (pendingAttempt && Date.now() > pendingAttempt.expiresAt) pendingAttempt = null;
+  return pendingAttempt !== null;
 }
 
 export function cancelPendingSignIn(): void {
@@ -132,7 +138,7 @@ export type BrowserSignInResult =
 export async function openGoogleSignIn(): Promise<BrowserSignInResult> {
   const redirectUri = getAuthRedirectUri();
   const { verifier, challenge } = await createPkcePair();
-  pendingAttempt = { verifier, startedAt: Date.now() };
+  pendingAttempt = { verifier, expiresAt: Date.now() + ATTEMPT_TTL_MS };
   const url =
     `${API_BASE_URL}/auth/google?platform=mobile` +
     `&redirectUri=${encodeURIComponent(redirectUri)}&codeChallenge=${encodeURIComponent(challenge)}`;
@@ -155,7 +161,13 @@ export async function openGoogleSignIn(): Promise<BrowserSignInResult> {
     return { type: 'code', code };
   }
   // iOS "cancel" is an explicit user cancel. Android may report "dismiss" while the redirect is still
-  // delivered through the router (auth/callback route), so keep the verifier until it expires.
-  if (result.type === 'cancel') cancelPendingSignIn();
+  // delivered through the router (auth/callback route), so clearing the verifier here would break that
+  // sign-in. Instead, shrink its lifetime to a short grace window so a dismissed tab doesn't leave a
+  // usable verifier around for the full 10 minutes.
+  if (result.type === 'cancel') {
+    cancelPendingSignIn();
+  } else if (pendingAttempt?.verifier === verifier) {
+    pendingAttempt.expiresAt = Math.min(pendingAttempt.expiresAt, Date.now() + DISMISS_GRACE_MS);
+  }
   return { type: 'cancelled' };
 }

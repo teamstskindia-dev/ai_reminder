@@ -7,7 +7,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Structurally-shared deep update: every object whose `id` equals `id` is shallow-merged with `patch`.
+ * Recursively merges `patch` into `target`. Nested plain objects are merged key by key, so a patch
+ * like `{ report: { status } }` keeps the report's other fields. Arrays, null and scalars replace.
+ */
+function mergeDeep(target: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...target };
+  for (const [key, value] of Object.entries(patch)) {
+    const current = next[key];
+    next[key] = isPlainObject(current) && isPlainObject(value) ? mergeDeep(current, value) : value;
+  }
+  return next;
+}
+
+/**
+ * Structurally-shared deep update: every object whose `id` equals `id` is deep-merged with `patch`.
  * Works for plain lists, paginated `{ items }`, infinite `{ pages }` and aggregates like DashboardHome.
  */
 export function deepPatch(value: unknown, id: string, patch: Record<string, unknown>): unknown {
@@ -21,7 +34,7 @@ export function deepPatch(value: unknown, id: string, patch: Record<string, unkn
     return changed ? next : value;
   }
   if (isPlainObject(value)) {
-    if (value.id === id) return { ...value, ...patch };
+    if (value.id === id) return mergeDeep(value, patch);
     let changed = false;
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
