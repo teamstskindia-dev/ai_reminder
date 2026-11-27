@@ -18,6 +18,7 @@ import {
 } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCapture, useDeleteCapture, useRenameCapture, useRetryCapture, useReviewCapture } from '@/api/hooks/captures';
 import { useTranscript } from '@/api/hooks/meetings';
@@ -175,6 +176,9 @@ function Processing({ capture, lang }: { capture: CaptureDetail; lang: LanguageS
  */
 export function CaptureScreen({ id }: { id: string }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  /** Keeps the pinned footer button above the Android navigation bar / iOS home indicator. */
+  const footerInset = { paddingBottom: Math.max(insets.bottom, 12) + 4 };
   const profile = useProfile();
   const lang = profile.data?.languageStyle ?? 'english';
   const query = useCapture(id);
@@ -616,7 +620,7 @@ export function CaptureScreen({ id }: { id: string }) {
       </ScrollView>
 
       {capture.status === 'completed' && (needsSave || !capture.reviewedAt) ? (
-        <View style={[styles.footer, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+        <View style={[styles.footer, footerInset, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
           <Button
             label={needsSave ? pick(lang, 'Save', 'Save karo') : pick(lang, 'Looks good', 'Sab theek hai')}
             icon={CheckCircle2}
@@ -626,7 +630,7 @@ export function CaptureScreen({ id }: { id: string }) {
           />
         </View>
       ) : capture.status === 'failed' && !capture.noSpeech && capture.audioKept ? (
-        <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
+        <View style={[styles.footer, footerInset, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
           <Button label={pick(lang, 'Try again', 'Dobara try karo')} icon={RotateCw} fullWidth loading={retry.isPending} onPress={() => retry.mutate()} />
         </View>
       ) : null}
