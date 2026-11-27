@@ -17,6 +17,7 @@ import { toRecordingParts } from '../ai/transcription.service';
 import { CompanionChatService } from '../companion/companion-chat.service';
 import { toAttendees } from '../meetings/meetings.mapper';
 import { DEFAULT_REMINDER_CHANNELS, RemindersService } from '../reminders/reminders.service';
+import { UploadQuotaService } from '../users/upload-quota.service';
 import {
   CreateCaptureDto,
   FinishCaptureDto,
@@ -58,6 +59,7 @@ export class CapturesService {
     private readonly reminders: RemindersService,
     private readonly companion: CompanionChatService,
     private readonly insightsService: CaptureInsightsService,
+    private readonly quota: UploadQuotaService,
     @InjectQueue(QUEUE.AI) private readonly aiQueue: Queue,
   ) {}
 
@@ -166,6 +168,8 @@ export class CapturesService {
     });
     if (!meeting) throw AppException.notFound('Recording');
     if (meeting.status !== 'uploading') throw AppException.conflict('This recording has already been sent');
+    // No point storing audio that can't be transcribed this month (plan's uploadMinutesPerMonth).
+    await this.quota.assertCanUpload(userId);
 
     const upload = validateMeetingUpload(file.originalname, file.buffer, await detectFileType(file.buffer));
     if (upload.kind !== 'audio') throw AppException.badRequest('Only audio can be added to a recording');
@@ -200,17 +204,29 @@ export class CapturesService {
     const bookmarks = (dto.bookmarks ?? [])
       .filter((b) => b.atMs <= dto.durationMs)
       .map((b) => ({ atMs: b.atMs, label: b.label?.trim() || null }));
-    await this.prisma.meeting.update({
-      where: { id },
-      data: {
-        ...(dto.title?.trim() ? { title: dto.title.trim() } : {}),
-        bookmarks,
-        durationSeconds,
-        endAt: new Date(row.startAt.getTime() + dto.durationMs),
-        status: 'processing',
-        failureReason: null,
-      },
-    });
+    // Charged against the plan's uploadMinutesPerMonth before transcription; refused if it doesn't fit.
+    const refund = await this.quota.consume(userId, durationSeconds);
+    try {
+      // Only from 'uploading', so two finish calls at once charge the recording once.
+      const { count } = await this.prisma.meeting.updateMany({
+        where: { id, status: 'uploading' },
+        data: {
+          ...(dto.title?.trim() ? { title: dto.title.trim() } : {}),
+          bookmarks,
+          durationSeconds,
+          endAt: new Date(row.startAt.getTime() + dto.durationMs),
+          status: 'processing',
+          failureReason: null,
+        },
+      });
+      if (count === 0) {
+        await refund();
+        return this.get(userId, id);
+      }
+    } catch (err) {
+      await refund().catch(() => undefined);
+      throw err;
+    }
     await this.enqueue(id);
     this.logger.log({ meetingId: id, parts: dto.partCount, durationSeconds }, 'capture queued');
     return this.get(userId, id);

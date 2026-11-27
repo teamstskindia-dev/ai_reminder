@@ -46,6 +46,11 @@ export interface LocalCapture {
   lastError: string | null;
   /** A permanent problem (the server refused it); retrying will not help. */
   permanent: boolean;
+  /**
+   * The plan's monthly audio minutes are used up. The recording stays on the phone: it is retried every few
+   * hours (it goes through once the new month starts) or right away from "Try now" after upgrading.
+   */
+  planLimited?: boolean;
   updatedAt: string;
 }
 

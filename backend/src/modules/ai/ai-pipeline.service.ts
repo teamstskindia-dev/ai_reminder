@@ -20,6 +20,7 @@ import { EmbeddingService } from './embedding.service';
 import { ReportGeneratorService } from './report-generator.service';
 import type { ReportOutput } from './report.schema';
 import { computeTalkStats, transcriptDurationSeconds } from './talk-time';
+import { UploadQuotaService } from '../users/upload-quota.service';
 import { formatTranscriptLines } from './transcript-format';
 import { toRecordingParts, TranscriptionService } from './transcription.service';
 
@@ -69,6 +70,7 @@ export class AiPipelineService {
     private readonly storage: StorageService,
     private readonly nameFix: NameFixService,
     private readonly people: PeopleService,
+    private readonly uploadQuota: UploadQuotaService,
   ) {}
 
   async process(
@@ -92,6 +94,8 @@ export class AiPipelineService {
       }
       if (!transcribed.length) throw new PermanentJobError(NO_SPEECH_REASON);
       await this.transcripts.replaceAll(meeting.id, transcribed);
+      // Kept on the row object too, so the 'completed' update below doesn't write back the old length.
+      meeting.durationSeconds = await this.chargeTranscribedAudio(meeting, transcriptDurationSeconds(transcribed));
     }
 
     // Names the user fixed before ("Raul" → "Rahul") are applied first, so the summary uses them too (§10).
@@ -235,6 +239,21 @@ export class AiPipelineService {
       'meeting processed',
     );
     return { actionItems: report.actionItems.length, reminders: reminderCount, chunks };
+  }
+
+  /**
+   * Counts transcribed audio against the plan's uploadMinutesPerMonth. An uploaded file is charged here (its
+   * length is only known now); a recorded conversation was charged at "finish" from the length the phone
+   * reported, so only what the transcript shows beyond that is added. The stored duration is raised to what
+   * was charged, which makes a retry of the job charge nothing twice. Returns the meeting's duration.
+   */
+  private async chargeTranscribedAudio(meeting: MeetingRow, transcribedSeconds: number): Promise<number | null> {
+    if (meeting.source !== 'upload' && meeting.source !== 'capture') return meeting.durationSeconds;
+    const charged = meeting.durationSeconds ?? 0;
+    if (transcribedSeconds <= charged) return meeting.durationSeconds;
+    await this.uploadQuota.record(meeting.userId, transcribedSeconds - charged);
+    await this.meetings.update(meeting.id, { durationSeconds: transcribedSeconds });
+    return transcribedSeconds;
   }
 
   /** Report upsert + AI action items + participants, atomically. */
