@@ -33,10 +33,14 @@ let again = false;
 /** The signed-in user whose recordings may be sent (set by useCaptureUploader). */
 let currentOwner: string | null = null;
 
+/** Plan limit reached: only worth asking again every few hours (new month, or the user upgraded). */
+const PLAN_LIMIT_RETRY_MS = 6 * 3600_000;
+
 /** Waits longer after each failed attempt: 15 s, 30 s, 1 min … up to 10 minutes. */
 function isDue(c: LocalCapture): boolean {
   if (c.state !== 'failed') return true;
   if (c.permanent) return false;
+  if (c.planLimited) return Date.now() - new Date(c.updatedAt).getTime() >= PLAN_LIMIT_RETRY_MS;
   const wait = Math.min(15_000 * 2 ** Math.max(0, c.attempts - 1), 10 * 60_000);
   return Date.now() - new Date(c.updatedAt).getTime() >= wait;
 }
@@ -48,7 +52,13 @@ function isPermanent(error: unknown): boolean {
 
 async function sendOne(initial: LocalCapture, owner: string): Promise<void> {
   // A recording from an older app version has no owner yet: it becomes the sending user's.
-  let c: LocalCapture = { ...initial, ownerId: initial.ownerId ?? owner, state: 'uploading', lastError: null };
+  let c: LocalCapture = {
+    ...initial,
+    ownerId: initial.ownerId ?? owner,
+    state: 'uploading',
+    lastError: null,
+    planLimited: false,
+  };
   await upsertCapture(c);
   try {
     if (!c.serverId) {
@@ -92,10 +102,11 @@ async function sendOne(initial: LocalCapture, owner: string): Promise<void> {
     }
     const message = error instanceof Error ? error.message : 'Upload failed';
     const permanent = isPermanent(error) || (error instanceof Error && /missing on this phone/.test(message));
-    if (!(error instanceof ApiError && (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT'))) {
-      reportError(error, { source: 'capture-upload', permanent });
-    }
-    await upsertCapture({ ...c, state: 'failed', attempts: c.attempts + 1, lastError: message, permanent });
+    // Not a bug and not permanent: the server message ("You've used all 60 minutes…") is shown on the card.
+    const planLimited = error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED';
+    const expected = error instanceof ApiError && ['NETWORK_ERROR', 'TIMEOUT', 'PLAN_LIMIT_REACHED'].includes(error.code);
+    if (!expected) reportError(error, { source: 'capture-upload', permanent });
+    await upsertCapture({ ...c, state: 'failed', attempts: c.attempts + 1, lastError: message, permanent, planLimited });
   }
 }
 
@@ -143,7 +154,7 @@ export async function processCaptureQueue(): Promise<void> {
 export async function retryLocalCapture(clientId: string): Promise<void> {
   const c = (await loadCaptures()).find((x) => x.clientId === clientId);
   if (!c || !belongsTo(c, currentOwner)) return;
-  await upsertCapture({ ...c, state: 'queued', permanent: false, attempts: 0 });
+  await upsertCapture({ ...c, state: 'queued', permanent: false, planLimited: false, attempts: 0 });
   await processCaptureQueue();
 }
 

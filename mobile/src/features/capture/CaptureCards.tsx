@@ -56,7 +56,7 @@ function LocalCard({ c, lang, online }: { c: LocalCapture; lang: LanguageStyle; 
           </Text>
           <Text variant="caption" tone="secondary">
             {failed
-              ? c.permanent
+              ? c.permanent || c.planLimited
                 ? (c.lastError ?? pick(lang, 'Couldn’t send it.', 'Bhej nahi paaye.'))
                 : pick(lang, 'Couldn’t send yet. I’ll keep trying.', 'Abhi nahi bhej paaya. Koshish karta rahunga.')
               : waiting

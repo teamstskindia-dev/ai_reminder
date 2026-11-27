@@ -9,6 +9,7 @@ import { upsertJob } from '../../infra/queue/job-utils';
 import { AiProcessJob, JOB, JobId, QUEUE } from '../../infra/queue/queue.constants';
 import { StorageService } from '../../infra/storage/storage.service';
 import { SettingsService } from '../content/settings.service';
+import { UploadQuotaService } from '../users/upload-quota.service';
 import { UploadMeetingDto } from './dto/meetings.dto';
 import { toMeetingDetail } from './meetings.mapper';
 import { MeetingsRepository, TranscriptRepository } from './meetings.repository';
@@ -30,6 +31,7 @@ export class UploadService {
     private readonly transcripts: TranscriptRepository,
     private readonly storage: StorageService,
     private readonly settings: SettingsService,
+    private readonly quota: UploadQuotaService,
     @InjectQueue(QUEUE.AI) private readonly aiQueue: Queue,
   ) {}
 
@@ -45,6 +47,10 @@ export class UploadService {
       const content = file.buffer.toString('utf8');
       segments = parseTranscript(content, detectTranscriptFormat(upload.displayName, content)).slice(0, 20_000);
       if (!segments.length) throw AppException.badRequest('No transcript lines were found in the file');
+    } else {
+      // Audio is transcribed (paid per minute): plan's uploadMinutesPerMonth. Its length is charged after
+      // transcription, in the AI pipeline.
+      await this.quota.assertCanUpload(userId, { checkPendingUploads: true });
     }
 
     const startAt = dto.startAt ? new Date(dto.startAt) : new Date();
